@@ -18,24 +18,31 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Diagnose PWA chunk 5
-        run: |
-          python3 - <<'PY'
-          import base64,re
-          data=open('pwa-src/index.b64.part05','r',encoding='utf-8').read()
-          data=re.sub(r'[^A-Za-z0-9+/=]','',data)
-          for i,(a,b) in enumerate([(0,16000),(16000,32000)],1):
-              seg=data[a:b]
-              seg += '='*((4-len(seg)%4)%4)
-              raw=base64.b64decode(seg,validate=False)
-              print('SEG',i,'len',len(raw))
-              print('START',repr(raw[:220]))
-              print('END',repr(raw[-220:]))
-          PY
-
       - name: Build Gelo Tutoia PWA
         run: |
-          exit 1
+          mkdir -p public/app
+          python3 - <<'PY'
+          import base64, re
+          files=[
+            'pwa-src/index.b64.part01','pwa-src/index.b64.part02','pwa-src/index.b64.part03',
+            'pwa-src/index.b64.part04','pwa-src/index.b64.part05','pwa-src/index.b64.part06'
+          ]
+          out=bytearray()
+          for path in files:
+              data=open(path,'r',encoding='utf-8').read()
+              data=re.sub(r'[^A-Za-z0-9+/=]','',data)
+              if path.endswith('part05'):
+                  data=data[:16000]
+              data += '='*((4-len(data)%4)%4)
+              out.extend(base64.b64decode(data,validate=False))
+          html=out.decode('utf-8')
+          html += open('pwa-src/index.tail.txt','r',encoding='utf-8').read()
+          html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg')
+          if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'):
+              raise RuntimeError('PWA HTML incompleto')
+          open('public/app/index.html','w',encoding='utf-8').write(html)
+          print('PWA pronta, bytes:',len(html.encode('utf-8')))
+          PY
 
       - name: Deploy to Cloudflare
         env:
