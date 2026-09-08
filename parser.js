@@ -27,7 +27,11 @@ const ALIASES_FIXOS = {
   "churrasco cosmos":"Churrasco Cosmos"
 };
 
-const NUMEROS = {um:1,uma:1,dois:2,duas:2,tres:3,quatro:4,cinco:5,seis:6,sete:7,oito:8,nove:9,dez:10,onze:11,doze:12,treze:13,quatorze:14,catorze:14,quinze:15,dezesseis:16,dezessete:17,dezoito:18,dezenove:19,vinte:20};
+const NUMEROS = {
+  um:1,uma:1,dois:2,duas:2,tres:3,quatro:4,cinco:5,seis:6,sete:7,oito:8,nove:9,dez:10,
+  onze:11,doze:12,treze:13,quatorze:14,catorze:14,quinze:15,dezesseis:16,dezessete:17,dezoito:18,dezenove:19,
+  vinte:20,trinta:30,quarenta:40,cinquenta:50,sessenta:60,setenta:70,oitenta:80,noventa:90,cem:100
+};
 
 function norm(text="") {
   return String(text).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
@@ -62,15 +66,37 @@ function cliente(texto){
   return {nome:"",alias:""};
 }
 
-function numero(token){ if(/^\d+$/.test(token||"")) return Number(token); return NUMEROS[token] ?? null; }
-function qtdPerto(tokens,produtos){ for(let i=0;i<tokens.length;i++){ if(!produtos.includes(tokens[i])) continue; for(let j=Math.max(0,i-3);j<i;j++){ const q=numero(tokens[j]); if(q!==null) return q; } } return null; }
+function numeroEm(tokens,i){
+  const token=tokens[i]||"";
+  if(/^\d+$/.test(token)) return {valor:Number(token),usados:1};
+  const base=NUMEROS[token];
+  if(base==null) return null;
+  if(base>=20 && base<100 && tokens[i+1]==="e"){
+    const unidade=NUMEROS[tokens[i+2]];
+    if(unidade>=1 && unidade<=9) return {valor:base+unidade,usados:3};
+  }
+  return {valor:base,usados:1};
+}
+function primeiroNumero(tokens){
+  for(let i=0;i<tokens.length;i++){const n=numeroEm(tokens,i);if(n)return n.valor;}
+  return null;
+}
+function qtdPerto(tokens,produtos){
+  for(let i=0;i<tokens.length;i++){
+    if(!produtos.includes(tokens[i])) continue;
+    for(let j=Math.max(0,i-4);j<i;j++){
+      const n=numeroEm(tokens,j); if(n && j+n.usados===i) return n.valor;
+    }
+  }
+  return null;
+}
 
 export function interpretarVenda(texto){
   const t=norm(texto),tokens=t.split(" ").filter(Boolean),c=cliente(texto);
   const pf=["filtrado","filtrados","filtrada","filtradas"],pe=["escama","escamas","comum","comuns"];
   const temF=tokens.some(x=>pf.includes(x)),temE=tokens.some(x=>pe.includes(x));
   let filtrado=temF?(qtdPerto(tokens,pf)??1):0,escamas=temE?(qtdPerto(tokens,pe)??1):0;
-  if(!temF&&!temE){const q=tokens.map(numero).find(x=>x!==null);escamas=q??1;}
+  if(!temF&&!temE){const q=primeiroNumero(tokens);escamas=q??1;}
   let pagamento="Não informado"; if(/\bfiado\b/.test(t)) pagamento="Fiado"; else if(/\bpix\b/.test(t)) pagamento="PIX"; else if(/\bdinheiro\b/.test(t)||/\bpago\b/.test(t)) pagamento="Dinheiro";
   const faltando=[]; if(!c.nome) faltando.push("cliente"); if(!(escamas+filtrado)) faltando.push("quantidade");
   return {cliente:c.nome,alias_detectado:c.alias,escamas,filtrado,total_sacos:escamas+filtrado,pagamento,status:"pendente_revisao",texto_origem:String(texto||"").trim(),precisa_revisao:faltando.length>0,faltando};
