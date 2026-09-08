@@ -19,7 +19,10 @@ const ALIASES_FIXOS={
 "para":"Peixaria Pará","seu para":"Peixaria Pará","sr para":"Peixaria Pará","senhor para":"Peixaria Pará","peixaria para":"Peixaria Pará","peixaria do para":"Peixaria Pará",
 "tiago":"Peixaria Tiago","seu tiago":"Peixaria Tiago","sr tiago":"Peixaria Tiago","senhor tiago":"Peixaria Tiago","peixaria tiago":"Peixaria Tiago","peixaria do tiago":"Peixaria Tiago",
 "ronald":"Peixaria Ronald","seu ronald":"Peixaria Ronald","sr ronald":"Peixaria Ronald","senhor ronald":"Peixaria Ronald","peixaria ronald":"Peixaria Ronald","peixaria do ronald":"Peixaria Ronald",
-"bacaxa":"Peixaria Bacaxá","peixaria bacaxa":"Peixaria Bacaxá",
+"perninha":"Alex Rua 22","alex perninha":"Alex Rua 22","seu perninha":"Alex Rua 22","sr perninha":"Alex Rua 22","senhor perninha":"Alex Rua 22","alex vinte e dois":"Alex Rua 22","alex rua vinte e dois":"Alex Rua 22","alex rua 22":"Alex Rua 22",
+"alex campinho":"Alex Campinho","peixaria alex campinho":"Alex Campinho","peixaria do alex campinho":"Alex Campinho","seu alex campinho":"Alex Campinho","sr alex campinho":"Alex Campinho","senhor alex campinho":"Alex Campinho",
+"filomena":"Maria Helieide","peixaria filomena":"Maria Helieide","peixaria da filomena":"Maria Helieide","maria filomena":"Maria Helieide","maria helieide":"Maria Helieide","helieide":"Maria Helieide",
+"jorge":"Peixaria Bacaxá","seu jorge":"Peixaria Bacaxá","sr jorge":"Peixaria Bacaxá","senhor jorge":"Peixaria Bacaxá","peixaria jorge":"Peixaria Bacaxá","peixaria do jorge":"Peixaria Bacaxá","peixaria bacaxa":"Peixaria Bacaxá","bacaxa":"Peixaria Bacaxá","bacacha":"Peixaria Bacaxá","peixaria bacacha":"Peixaria Bacaxá",
 "luiz":"Luiz Peixaria","seu luiz":"Luiz Peixaria","sr luiz":"Luiz Peixaria","senhor luiz":"Luiz Peixaria","luiz peixaria":"Luiz Peixaria","peixaria luiz":"Luiz Peixaria","peixaria do luiz":"Luiz Peixaria",
 "pedro":"Seu Pedro","seu pedro":"Seu Pedro","sr pedro":"Seu Pedro","senhor pedro":"Seu Pedro",
 "gilson":"Sr. Gilson","seu gilson":"Sr. Gilson","sr gilson":"Sr. Gilson","senhor gilson":"Sr. Gilson",
@@ -69,7 +72,7 @@ function parseVenda(texto){
 async function getWhatsAppMediaInfo(id,token){const r=await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${id}`,{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error(`Falha ao consultar mídia na Meta: HTTP ${r.status}`);return r.json();}
 async function downloadWhatsAppMedia(url,token){const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error(`Falha ao baixar mídia da Meta: HTTP ${r.status}`);return r.arrayBuffer();}
 function arrayBufferToBase64(ab){const b=new Uint8Array(ab);let s="";for(let i=0;i<b.length;i+=0x8000)s+=String.fromCharCode(...b.subarray(i,Math.min(i+0x8000,b.length)));return btoa(s);}
-async function transcreverAudio(env,ab){if(!env.AI)throw new Error("binding AI não disponível");const r=await env.AI.run(TRANSCRIBE_MODEL,{audio:arrayBufferToBase64(ab),task:"transcribe",language:"pt",vad_filter:true,initial_prompt:"Vendas de gelo. Preserve nomes de clientes, inclusive Seu, Sr., Peixaria, Padaria, quantidades, PIX, dinheiro, fiado, escamas e filtrado."});return String(r?.text||"").trim();}
+async function transcreverAudio(env,ab){if(!env.AI)throw new Error("binding AI não disponível");const r=await env.AI.run(TRANSCRIBE_MODEL,{audio:arrayBufferToBase64(ab),task:"transcribe",language:"pt",vad_filter:true,initial_prompt:"Vendas de gelo. Preserve nomes de clientes e apelidos como Perninha, Filomena, Jorge, Seu Jorge, Seu Luiz, Peixaria, Padaria, quantidades, PIX, dinheiro, fiado, escamas e filtrado."});return String(r?.text||"").trim();}
 function chaveMensagem(r){return `mensagem:${r.mensagem_id||`sem-id-${Date.now()}`}`;}
 async function salvarMensagemNoKV(env,r){if(!env.VENDAS)return null;const k=chaveMensagem(r);await env.VENDAS.put(k,JSON.stringify({...r,status:"pendente",recebido_em:new Date().toISOString()}));return k;}
 async function atualizarMensagemNoKV(env,k,a){if(!env.VENDAS||!k)return;const atual=await env.VENDAS.get(k,{type:"json"})||{};await env.VENDAS.put(k,JSON.stringify({...atual,...a,atualizado_em:new Date().toISOString()}));}
