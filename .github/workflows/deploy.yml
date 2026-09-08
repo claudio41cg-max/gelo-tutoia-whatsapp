@@ -21,7 +21,10 @@ jobs:
       - name: Build Gelo Tutoia PWA
         run: |
           mkdir -p public/app
-          cat pwa-src/index.b64.part* | tr -d '\n\r' | base64 --decode > public/app/index.html
+          : > public/app/index.html
+          for f in pwa-src/index.b64.part*; do
+            base64 --decode "$f" >> public/app/index.html
+          done
           sed -i 's#\./icon-192\.png#./icon.svg#g; s#\./icon-512\.png#./icon.svg#g' public/app/index.html
 
       - name: Deploy to Cloudflare
