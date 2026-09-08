@@ -18,6 +18,20 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Diagnose PWA source chunks
+        run: |
+          python3 - <<'PY'
+          import base64, glob, re, os
+          for path in sorted(glob.glob('pwa-src/index.b64.part*')):
+              data = open(path, 'r', encoding='utf-8').read()
+              data = re.sub(r'[^A-Za-z0-9+/=]', '', data)
+              data += '=' * ((4 - len(data) % 4) % 4)
+              raw = base64.b64decode(data, validate=False)
+              print(os.path.basename(path), 'b64=',len(data),'raw=',len(raw))
+              print('START',repr(raw[:120]))
+              print('END',repr(raw[-120:]))
+          PY
+
       - name: Build Gelo Tutoia PWA
         run: |
           mkdir -p public/app
