@@ -1,5 +1,6 @@
 const VERIFY_TOKEN = "gelo-tutoia-2026";
 const GRAPH_VERSION = "v26.0";
+const TRANSCRIBE_MODEL = "@cf/openai/whisper-large-v3-turbo";
 
 async function getWhatsAppMediaInfo(mediaId, accessToken) {
   const response = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
@@ -27,6 +28,36 @@ async function downloadWhatsAppMedia(mediaUrl, accessToken) {
   }
 
   return response.arrayBuffer();
+}
+
+function arrayBufferToBase64(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+async function transcreverAudio(env, audioBuffer) {
+  if (!env.AI) {
+    throw new Error("binding AI não disponível");
+  }
+
+  const audioBase64 = arrayBufferToBase64(audioBuffer);
+  const resultado = await env.AI.run(TRANSCRIBE_MODEL, {
+    audio: audioBase64,
+    task: "transcribe",
+    language: "pt",
+    vad_filter: true,
+    initial_prompt: "Vendas de gelo no Rio de Janeiro. Preserve nomes de clientes, quantidades, PIX, dinheiro, fiado, escamas e filtrado."
+  });
+
+  return String(resultado?.text || "").trim();
 }
 
 function chaveMensagem(resumo) {
@@ -70,7 +101,6 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Verificação do webhook pela Meta
     if (request.method === "GET") {
       const mode = url.searchParams.get("hub.mode");
       const token = url.searchParams.get("hub.verify_token");
@@ -86,7 +116,6 @@ export default {
       return new Response("Token de verificação inválido", { status: 403 });
     }
 
-    // Recebimento das mensagens do WhatsApp
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -153,6 +182,31 @@ export default {
                     await atualizarMensagemNoKV(env, kvKey, audioMeta);
                   } catch (kvError) {
                     console.log("Gelo Tutóia - erro ao registrar áudio no KV:", String(kvError));
+                  }
+
+                  try {
+                    await atualizarMensagemNoKV(env, kvKey, { status: "transcrevendo_audio" });
+                    const textoTranscrito = await transcreverAudio(env, audioBuffer);
+
+                    await atualizarMensagemNoKV(env, kvKey, {
+                      status: "transcrito",
+                      texto: textoTranscrito,
+                      transcricao: textoTranscrito,
+                      modelo_transcricao: TRANSCRIBE_MODEL,
+                      transcrito_em: new Date().toISOString()
+                    });
+
+                    console.log("Gelo Tutóia - áudio transcrito:", JSON.stringify({ texto: textoTranscrito }));
+                  } catch (transcriptionError) {
+                    console.log("Gelo Tutóia - erro na transcrição:", String(transcriptionError));
+                    try {
+                      await atualizarMensagemNoKV(env, kvKey, {
+                        status: "erro_transcricao",
+                        erro_transcricao: String(transcriptionError)
+                      });
+                    } catch (kvError) {
+                      console.log("Gelo Tutóia - erro ao registrar falha de transcrição no KV:", String(kvError));
+                    }
                   }
                 }
               } catch (mediaError) {
