@@ -38,6 +38,9 @@ jobs:
           html=out.decode('utf-8')
           html += open('pwa-src/index.tail.txt','r',encoding='utf-8').read()
           html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg')
+          html=html.replace('<buttton ','<button ')
+          html=html.replace("      </div>`:'g}\n", "      </div>`:''}\n")
+          html=html.replace('atualizarBageInbox()','atualizarBadgeInbox()')
           if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'):
               raise RuntimeError('PWA HTML incompleto')
           open('public/app/index.html','w',encoding='utf-8').write(html)
@@ -52,7 +55,6 @@ jobs:
           scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',html,re.S))
           open('/tmp/gelo-app.js','w',encoding='utf-8').write(scripts)
           PY
-          nl -ba /tmp/gelo-app.js | sed -n '955,985p'
           node --check /tmp/gelo-app.js
 
       - name: Deploy to Cloudflare
