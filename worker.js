@@ -29,6 +29,24 @@ async function downloadWhatsAppMedia(mediaUrl, accessToken) {
   return response.arrayBuffer();
 }
 
+async function salvarMensagemNoKV(env, resumo) {
+  if (!env.VENDAS) {
+    console.log("Gelo Tutóia - binding VENDAS não disponível");
+    return;
+  }
+
+  const mensagemId = resumo.mensagem_id || `sem-id-${Date.now()}`;
+  const key = `mensagem:${mensagemId}`;
+  const registro = {
+    ...resumo,
+    status: "pendente",
+    recebido_em: new Date().toISOString()
+  };
+
+  await env.VENDAS.put(key, JSON.stringify(registro));
+  console.log("Gelo Tutóia - mensagem salva no KV:", key);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -72,6 +90,12 @@ export default {
           };
 
           console.log("Gelo Tutóia - mensagem:", JSON.stringify(resumo));
+
+          try {
+            await salvarMensagemNoKV(env, resumo);
+          } catch (kvError) {
+            console.log("Gelo Tutóia - erro ao salvar no KV:", String(kvError));
+          }
 
           if (message.type === "audio" && message.audio?.id) {
             if (!env.META_ACCESS_TOKEN) {
