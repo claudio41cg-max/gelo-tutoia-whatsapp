@@ -1,0 +1,19 @@
+{
+  "name": "Gelo Tutóia",
+  "short_name": "Gelo Tutóia",
+  "description": "Sistema de vendas Gelo Tutóia",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#061422",
+  "theme_color": "#061422",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
