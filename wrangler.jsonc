@@ -9,6 +9,9 @@
       "id": "cee6952f3d5b41baa085866dcf46fbb7"
     }
   ],
+  "ai": {
+    "binding": "AI"
+  },
   "observability": {
     "logs": {
       "enabled": true,
