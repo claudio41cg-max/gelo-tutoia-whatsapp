@@ -1,8 +1,9 @@
 {
+  "id": "/app/?pwa=75",
   "name": "Gelo Tutóia",
   "short_name": "Gelo Tutóia",
   "description": "Sistema de vendas Gelo Tutóia",
-  "start_url": "./",
+  "start_url": "./?pwa=75",
   "scope": "./",
   "display": "standalone",
   "background_color": "#061422",
@@ -10,7 +11,7 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "./icon.svg",
+      "src": "./icon-v75.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
