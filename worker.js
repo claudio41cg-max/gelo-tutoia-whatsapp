@@ -1,4 +1,33 @@
 const VERIFY_TOKEN = "gelo-tutoia-2026";
+const GRAPH_VERSION = "v26.0";
+
+async function getWhatsAppMediaInfo(mediaId, accessToken) {
+  const response = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Falha ao consultar mídia na Meta: HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function downloadWhatsAppMedia(mediaUrl, accessToken) {
+  const response = await fetch(mediaUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar mídia da Meta: HTTP ${response.status}`);
+  }
+
+  return response.arrayBuffer();
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -43,6 +72,31 @@ export default {
           };
 
           console.log("Gelo Tutóia - mensagem:", JSON.stringify(resumo));
+
+          if (message.type === "audio" && message.audio?.id) {
+            if (!env.META_ACCESS_TOKEN) {
+              console.log("Gelo Tutóia - áudio detectado, mas META_ACCESS_TOKEN ainda não está configurado");
+            } else {
+              try {
+                const mediaInfo = await getWhatsAppMediaInfo(message.audio.id, env.META_ACCESS_TOKEN);
+                console.log("Gelo Tutóia - mídia localizada:", JSON.stringify({
+                  id: mediaInfo.id || message.audio.id,
+                  mime_type: mediaInfo.mime_type || message.audio?.mime_type || "",
+                  file_size: mediaInfo.file_size || null
+                }));
+
+                if (mediaInfo.url) {
+                  const audioBuffer = await downloadWhatsAppMedia(mediaInfo.url, env.META_ACCESS_TOKEN);
+                  console.log("Gelo Tutóia - áudio baixado com sucesso:", JSON.stringify({
+                    bytes: audioBuffer.byteLength,
+                    mime_type: mediaInfo.mime_type || message.audio?.mime_type || ""
+                  }));
+                }
+              } catch (mediaError) {
+                console.log("Gelo Tutóia - erro ao obter áudio:", String(mediaError));
+              }
+            }
+          }
         } else {
           console.log("Gelo Tutóia - evento sem mensagem:", JSON.stringify(body));
         }
