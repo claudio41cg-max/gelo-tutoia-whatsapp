@@ -11,6 +11,9 @@ header,.header{background:linear-gradient(135deg,#052b55,#087cd2 55%,#03bce9)!im
 .cli-btn{background:linear-gradient(135deg,#0a315e,#0b4c91)!important;border:1px solid rgba(53,166,255,.58)!important;border-radius:24px!important;box-shadow:inset 0 1px rgba(255,255,255,.10),0 10px 22px rgba(0,0,0,.24)!important}
 .cli-btn.vendido,.cli-btn.done{background:linear-gradient(135deg,#07552e,#087a42)!important;border-color:rgba(37,255,140,.55)!important}
 .cli-arrow{font-size:1.7rem!important;color:#61dfff!important}
+.tipo-gelo-tag{display:block;width:max-content;margin-top:5px;padding:3px 8px;border-radius:999px;background:rgba(20,210,255,.13);border:1px solid rgba(80,220,255,.35);color:#8feaff;font-size:9px;line-height:1;font-weight:900;letter-spacing:.7px}
+.cli-btn.done .tipo-gelo-tag,.cli-btn.vendido .tipo-gelo-tag{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.22);color:#d9fff0}
+.cli-badge{font-weight:900!important;white-space:nowrap!important;font-size:12px!important;padding:6px 9px!important;border-radius:999px!important;background:rgba(0,0,0,.20)!important;border:1px solid rgba(255,255,255,.18)!important}
 input,select{background:linear-gradient(180deg,#0a294b,#071d36)!important;border:1px solid rgba(73,179,255,.42)!important;box-shadow:inset 0 2px 8px rgba(0,0,0,.25)!important}
 nav,.bottom-nav{background:linear-gradient(180deg,rgba(5,29,54,.97),rgba(2,13,26,.99))!important;border-top:1px solid rgba(67,193,255,.32)!important;box-shadow:0 -12px 30px rgba(0,0,0,.32)!important}
 *{-webkit-tap-highlight-color:transparent}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}
