@@ -28,11 +28,13 @@ jobs:
           html=out.decode('utf-8')+open('pwa-src/index.tail.txt',encoding='utf-8').read()
           html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg').replace('<buttton ','<button ').replace("      </div>`:'g}\n","      </div>`:''}\n").replace('atualizarBageInbox()','atualizarBadgeInbox()')
           enhance=open('pwa-src/client-sync.js',encoding='utf-8').read()
-          quality='''<style id="hq-ui">html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}button,.cli-btn,.quick-btn,.nav-btn{image-rendering:auto}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}.cli-btn{border-width:1.5px}.cli-arrow,.qi,.ni{filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))}@media(min-resolution:2dppx){.cli-btn,.quick-btn,.nav-btn{border-width:1px}}</style>'''
+          premium=open('pwa-src/premium-ui.css',encoding='utf-8').read()
+          quality='''<style id="hq-ui">html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}button,.cli-btn,.quick-btn,.nav-btn{image-rendering:auto}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}@media(min-resolution:2dppx){.cli-btn,.quick-btn,.nav-btn{border-width:1px}}</style>'''
+          html=html.replace('</head>','<style id="premium-ui">'+premium+'</style></head>')
           html=html.replace('</body>',quality+'<script>'+enhance+'</script></body>')
           if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'): raise RuntimeError('PWA HTML incompleto')
           open('public/app/index.html','w',encoding='utf-8').write(html)
-          print('PWA pronta, bytes:',len(html.encode()))
+          print('PWA premium pronta, bytes:',len(html.encode()))
           PY
       - name: Validate Gelo Tutoia JavaScript
         run: |
