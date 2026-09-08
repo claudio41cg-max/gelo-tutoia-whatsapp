@@ -3,6 +3,12 @@
   "name": "gelo-tutoia-whatsapp",
   "main": "worker.js",
   "compatibility_date": "2026-09-07",
+  "kv_namespaces": [
+    {
+      "binding": "VENDAS",
+      "id": "cee6952f3d5b41baa085866dcf46fbb7"
+    }
+  ],
   "observability": {
     "logs": {
       "enabled": true,
