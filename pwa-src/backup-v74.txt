@@ -1,0 +1,5 @@
+Backup antes da troca forçada do ícone Android.
+manifest.webmanifest SHA: a0ec88eee27517bc94dc1c0abb34c7e7c3d78cc4
+sw.js SHA: bdbb2e852badfd8a0f9afadec6e9257951368afd
+deploy.yml SHA: 6a65eca59e5c8f5cc7860a3852bd13aeefdf2c84
+icon.svg SHA: 3ab364e98f006a9de8ae3e4f2e198611e5f753d5
