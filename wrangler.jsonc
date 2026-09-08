@@ -3,6 +3,9 @@
   "name": "gelo-tutoia-whatsapp",
   "main": "worker-vendas.js",
   "compatibility_date": "2026-09-07",
+  "assets": {
+    "directory": "./public"
+  },
   "kv_namespaces": [
     {
       "binding": "VENDAS",
