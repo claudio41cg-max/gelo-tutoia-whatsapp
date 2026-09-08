@@ -25,7 +25,8 @@ jobs:
           import base64, re
           files=[
             'pwa-src/index.b64.part01','pwa-src/index.b64.part02','pwa-src/index.b64.part03',
-            'pwa-src/index.b64.part04','pwa-src/index.b64.part05','pwa-src/index.b64.part06'
+            'pwa-src/index.b64.part04','pwa-src/index.b64.part05','pwa-src/index.b64.part06',
+            'pwa-src/index.b64.tail-final'
           ]
           out=bytearray()
           for path in files:
@@ -36,7 +37,6 @@ jobs:
               data += '='*((4-len(data)%4)%4)
               out.extend(base64.b64decode(data,validate=False))
           html=out.decode('utf-8')
-          html += open('pwa-src/index.tail.txt','r',encoding='utf-8').read()
           html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg')
           if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'):
               raise RuntimeError('PWA HTML incompleto')
