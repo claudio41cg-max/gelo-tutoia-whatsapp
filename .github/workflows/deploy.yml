@@ -44,6 +44,16 @@ jobs:
           print('PWA pronta, bytes:',len(html.encode('utf-8')))
           PY
 
+      - name: Validate Gelo Tutoia JavaScript
+        run: |
+          python3 - <<'PY'
+          import re
+          html=open('public/app/index.html','r',encoding='utf-8').read()
+          scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',html,re.S))
+          open('/tmp/gelo-app.js','w',encoding='utf-8').write(scripts)
+          PY
+          node --check /tmp/gelo-app.js
+
       - name: Deploy to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
