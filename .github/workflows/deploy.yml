@@ -18,40 +18,24 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Diagnose PWA source chunks
+      - name: Diagnose PWA chunk 5
         run: |
           python3 - <<'PY'
-          import base64, glob, re, os
-          for path in sorted(glob.glob('pwa-src/index.b64.part*')):
-              data = open(path, 'r', encoding='utf-8').read()
-              data = re.sub(r'[^A-Za-z0-9+/=]', '', data)
-              data += '=' * ((4 - len(data) % 4) % 4)
-              raw = base64.b64decode(data, validate=False)
-              print(os.path.basename(path), 'b64=',len(data),'raw=',len(raw))
-              print('START',repr(raw[:120]))
-              print('END',repr(raw[-120:]))
+          import base64,re
+          data=open('pwa-src/index.b64.part05','r',encoding='utf-8').read()
+          data=re.sub(r'[^A-Za-z0-9+/=]','',data)
+          for i,(a,b) in enumerate([(0,16000),(16000,32000)],1):
+              seg=data[a:b]
+              seg += '='*((4-len(seg)%4)%4)
+              raw=base64.b64decode(seg,validate=False)
+              print('SEG',i,'len',len(raw))
+              print('START',repr(raw[:220]))
+              print('END',repr(raw[-220:]))
           PY
 
       - name: Build Gelo Tutoia PWA
         run: |
-          mkdir -p public/app
-          python3 - <<'PY'
-          import base64, glob, re, os
-          out = bytearray()
-          for path in sorted(glob.glob('pwa-src/index.b64.part*')):
-              data = open(path, 'r', encoding='utf-8').read()
-              data = re.sub(r'[^A-Za-z0-9+/=]', '', data)
-              if os.path.basename(path) == 'index.b64.part05' and len(data) > 16000:
-                  data = data[:16000]
-              data += '=' * ((4 - len(data) % 4) % 4)
-              out.extend(base64.b64decode(data, validate=False))
-          html = out.decode('utf-8')
-          if not html.lstrip().startswith('<!DOCTYPE html>') or '</html>' not in html:
-              raise RuntimeError('PWA HTML reconstructed incompletely')
-          html = html.replace('./icon-192.png', './icon.svg').replace('./icon-512.png', './icon.svg')
-          open('public/app/index.html', 'w', encoding='utf-8').write(html)
-          print('PWA HTML bytes:', len(html.encode('utf-8')))
-          PY
+          exit 1
 
       - name: Deploy to Cloudflare
         env:
