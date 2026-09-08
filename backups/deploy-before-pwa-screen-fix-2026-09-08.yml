@@ -1,0 +1,50 @@
+name: Deploy Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build Gelo Tutoia PWA
+        run: |
+          mkdir -p public/app
+          python3 - <<'PY'
+          import base64, re
+          files=[
+            'pwa-src/index.b64.part01','pwa-src/index.b64.part02','pwa-src/index.b64.part03',
+            'pwa-src/index.b64.part04','pwa-src/index.b64.part05','pwa-src/index.b64.part06'
+          ]
+          out=bytearray()
+          for path in files:
+              data=open(path,'r',encoding='utf-8').read()
+              data=re.sub(r'[^A-Za-z0-9+/=]','',data)
+              if path.endswith('part05'):
+                  data=data[:16000]
+              data += '='*((4-len(data)%4)%4)
+              out.extend(base64.b64decode(data,validate=False))
+          html=out.decode('utf-8')
+          html += open('pwa-src/index.tail.txt','r',encoding='utf-8').read()
+          html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg')
+          if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'):
+              raise RuntimeError('PWA HTML incompleto')
+          open('public/app/index.html','w',encoding='utf-8').write(html)
+          print('PWA pronta, bytes:',len(html.encode('utf-8')))
+          PY
+
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler@latest deploy
