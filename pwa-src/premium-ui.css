@@ -1,0 +1,16 @@
+/* Gelo Tutoia premium mobile UI */
+:root{--ice:#13c8ff;--blue:#0877ed;--navy:#031426;--line:rgba(82,203,255,.45)}
+body{background:radial-gradient(circle at 50% -10%,#073a70 0,#041d35 28%,#020e1b 72%) fixed!important}
+header,.header{background:linear-gradient(135deg,#052b55,#087cd2 55%,#03bce9)!important;box-shadow:0 10px 30px rgba(0,112,255,.28),inset 0 -1px rgba(255,255,255,.18)!important}
+.card,.summary,.resumo,.caixa,.stat-card{background:linear-gradient(145deg,rgba(11,54,101,.96),rgba(4,29,57,.98))!important;border:1px solid rgba(55,190,255,.32)!important;box-shadow:inset 0 1px rgba(255,255,255,.09),0 12px 28px rgba(0,0,0,.22)!important}
+.quick-btn,.nav-btn,button{transition:transform .12s ease,filter .12s ease,box-shadow .12s ease}
+.quick-btn{border:1px solid rgba(255,255,255,.22)!important;border-radius:24px!important;box-shadow:inset 0 2px rgba(255,255,255,.20),inset 0 -5px 12px rgba(0,0,0,.16),0 12px 25px rgba(0,0,0,.28)!important;overflow:hidden;position:relative}
+.quick-btn:before{content:"";position:absolute;inset:0;background:linear-gradient(150deg,rgba(255,255,255,.24),transparent 38%);pointer-events:none}
+.quick-btn:active,button:active{transform:scale(.97);filter:brightness(1.12)}
+.qi,.ni{font-size:2.15rem!important;filter:drop-shadow(0 3px 4px rgba(0,0,0,.32))!important}
+.cli-btn{background:linear-gradient(135deg,#0a315e,#0b4c91)!important;border:1px solid rgba(53,166,255,.58)!important;border-radius:24px!important;box-shadow:inset 0 1px rgba(255,255,255,.10),0 10px 22px rgba(0,0,0,.24)!important}
+.cli-btn.vendido,.cli-btn.done{background:linear-gradient(135deg,#07552e,#087a42)!important;border-color:rgba(37,255,140,.55)!important}
+.cli-arrow{font-size:1.7rem!important;color:#61dfff!important}
+input,select{background:linear-gradient(180deg,#0a294b,#071d36)!important;border:1px solid rgba(73,179,255,.42)!important;box-shadow:inset 0 2px 8px rgba(0,0,0,.25)!important}
+nav,.bottom-nav{background:linear-gradient(180deg,rgba(5,29,54,.97),rgba(2,13,26,.99))!important;border-top:1px solid rgba(67,193,255,.32)!important;box-shadow:0 -12px 30px rgba(0,0,0,.32)!important}
+*{-webkit-tap-highlight-color:transparent}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}
