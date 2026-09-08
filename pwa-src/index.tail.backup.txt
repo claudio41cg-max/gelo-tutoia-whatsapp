@@ -1,0 +1,87 @@
+unction enviarWARelatorio(){
+  const bruto=S.din+S.pix+S.fiad;
+  const liqTotal=bruto-S.desp;
+  const totalSacos=S.esc+S.filt;
+  const clisAtendidos=CLIENTES.filter(n=>S.atendidos.has(n));
+
+  let linhasClientes='';
+  clisAtendidos.forEach((nome,idx)=>{
+    const vs=S.vpc[nome]||[];
+    const itens=vs.map(v=>{
+      const t=v.tipo==='esc'?'Escamas':v.tipo==='filt'?'Filtrado':'Observação';
+      const p=v.pag==='PIX'?'PIX':v.pag==='Fiado'?'Fiado':'Pago/Dinheiro';
+      return `   • ${v.qtd}x ${t} | ${p} | ${fmt(v.valor)}`;
+    }).join('\n');
+    const total=vs.reduce((a,v)=>a+v.valor,0);
+    linhasClientes+=`${idx+1}. *${nome}*\n${itens}\n   Total: *${fmt(total)}*\n\n`;
+  });
+
+  const despesas=S.despDia.length
+    ? S.despDia.map(d=>`• ${d}`).join('\n')
+    : '• Nenhuma despesa registrada';
+
+  const msg=`*GELO TUTOIA | FECHAMENTO DO DIA*
+📅 ${dataSimples()}
+
+📦 *QUANTIDADE VENDIDA*
+❄️ Escamas: *${S.esc} sacos*
+💎 Filtrado: *${S.filt} sacos*
+📦 Total: *${totalSacos} sacos*
+
+👥 *VENDAS POR CLIENTE*
+${linhasClientes || 'Nenhuma venda registrada.\n'}
+💰 *VALORES DO DIA*
+💵 Dinheiro / Pago: *${fmt(S.din)}*
+📱 PIX: *${fmt(S.pix)}*
+💳 Fiado: *${fmt(S.fiad)}*
+💰 Total de vendas: *${fmt(bruto)}*
+
+📉 *DESPESAS*
+${despesas}
+Total despesas: *${fmt(S.desp)}*
+
+✅ *FECHAMENTO*
+Total após despesas: *${fmt(liqTotal)}*
+
+_Gelo Tutoia_`;
+
+  const a=document.getElementById('wa-link');
+  a.href='https://wa.me/5521981378219?text='+encodeURIComponent(msg);
+  a.click();
+}
+
+// Clima
+fetch('https://api.open-meteo.com/v1/forecast?latitude=-22.9068&longitude=-43.1729&current=temperature_2m')
+  .then(r=>r.json()).then(d=>{
+    document.getElementById('hdr-clima').textContent='🌡️ '+Math.round(d.current.temperature_2m)+'°C';
+  }).catch(()=>{});
+
+document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+
+const restaurado=restaurarEstado();
+updHdr();
+telaClientes();
+if(restaurado&&(S.esc>0||S.filt>0||S.caixa>0||S.desp>0||S.fiad>0)){
+  setTimeout(()=>toast('📂 Dados restaurados!'),400);
+}
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden') salvarEstado();
+});
+window.addEventListener('pagehide',()=>salvarEstado());
+window.addEventListener('beforeunload',()=>salvarEstado());
+setInterval(()=>salvarEstado(), 5000);
+setTimeout(montarBottomNav,0);
+setTimeout(()=>sincronizarInboxRemoto(false),1500);
+setInterval(()=>sincronizarInboxRemoto(false),60000);
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
