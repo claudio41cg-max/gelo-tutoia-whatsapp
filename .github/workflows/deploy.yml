@@ -21,11 +21,18 @@ jobs:
       - name: Build Gelo Tutoia PWA
         run: |
           mkdir -p public/app
-          : > public/app/index.html
-          for f in pwa-src/index.b64.part*; do
-            base64 --decode "$f" >> public/app/index.html
-          done
-          sed -i 's#\./icon-192\.png#./icon.svg#g; s#\./icon-512\.png#./icon.svg#g' public/app/index.html
+          python3 - <<'PY'
+          import base64, glob, re
+          out = bytearray()
+          for path in sorted(glob.glob('pwa-src/index.b64.part*')):
+              data = open(path, 'r', encoding='utf-8').read()
+              data = re.sub(r'[^A-Za-z0-9+/=]', '', data)
+              data += '=' * ((4 - len(data) % 4) % 4)
+              out.extend(base64.b64decode(data, validate=False))
+          html = out.decode('utf-8')
+          html = html.replace('./icon-192.png', './icon.svg').replace('./icon-512.png', './icon.svg')
+          open('public/app/index.html', 'w', encoding='utf-8').write(html)
+          PY
 
       - name: Deploy to Cloudflare
         env:
