@@ -1,4 +1,4 @@
-unction enviarWARelatorio(){
+function enviarWARelatorio(){
   const bruto=S.din+S.pix+S.fiad;
   const liqTotal=bruto-S.desp;
   const totalSacos=S.esc+S.filt;
@@ -65,16 +65,12 @@ if(restaurado&&(S.esc>0||S.filt>0||S.caixa>0||S.desp>0||S.fiad>0)){
   setTimeout(()=>toast('📂 Dados restaurados!'),400);
 }
 
-// Salva ao sair/minimizar
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden') salvarEstado();
 });
 window.addEventListener('pagehide',()=>salvarEstado());
 window.addEventListener('beforeunload',()=>salvarEstado());
-
-// Autosave a cada 5 segundos
 setInterval(()=>salvarEstado(), 5000);
-
 setTimeout(montarBottomNav,0);
 setTimeout(()=>sincronizarInboxRemoto(false),1500);
 setInterval(()=>sincronizarInboxRemoto(false),60000);
