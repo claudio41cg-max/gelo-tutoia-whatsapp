@@ -26,7 +26,7 @@ jobs:
               data+='='*((4-len(data)%4)%4)
               out.extend(base64.b64decode(data,validate=False))
           html=out.decode('utf-8')+open('pwa-src/index.tail.txt',encoding='utf-8').read()
-          html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg').replace('<buttton ','<button ').replace("      </div>`:'g}\n","      </div>`:''}\n").replace('atualizarBageInbox()','atualizarBadgeInbox()')
+          html=html.replace('./icon-192.png','./icon-v75.svg').replace('./icon-512.png','./icon-v75.svg').replace('./icon.svg','./icon-v75.svg').replace('<buttton ','<button ').replace("      </div>`:'g}\n","      </div>`:''}\n").replace('atualizarBageInbox()','atualizarBadgeInbox()')
           enhance=open('pwa-src/client-sync.js',encoding='utf-8').read()
           premium=open('pwa-src/premium-ui.css',encoding='utf-8').read()
           quality='''<style id="hq-ui">html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}button,.cli-btn,.quick-btn,.nav-btn{image-rendering:auto}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}@media(min-resolution:2dppx){.cli-btn,.quick-btn,.nav-btn{border-width:1px}}</style>'''
