@@ -29,14 +29,18 @@ async function downloadWhatsAppMedia(mediaUrl, accessToken) {
   return response.arrayBuffer();
 }
 
+function chaveMensagem(resumo) {
+  const mensagemId = resumo.mensagem_id || `sem-id-${Date.now()}`;
+  return `mensagem:${mensagemId}`;
+}
+
 async function salvarMensagemNoKV(env, resumo) {
   if (!env.VENDAS) {
     console.log("Gelo Tutóia - binding VENDAS não disponível");
-    return;
+    return null;
   }
 
-  const mensagemId = resumo.mensagem_id || `sem-id-${Date.now()}`;
-  const key = `mensagem:${mensagemId}`;
+  const key = chaveMensagem(resumo);
   const registro = {
     ...resumo,
     status: "pendente",
@@ -45,6 +49,21 @@ async function salvarMensagemNoKV(env, resumo) {
 
   await env.VENDAS.put(key, JSON.stringify(registro));
   console.log("Gelo Tutóia - mensagem salva no KV:", key);
+  return key;
+}
+
+async function atualizarMensagemNoKV(env, key, alteracoes) {
+  if (!env.VENDAS || !key) return;
+
+  const atual = await env.VENDAS.get(key, { type: "json" }) || {};
+  const novo = {
+    ...atual,
+    ...alteracoes,
+    atualizado_em: new Date().toISOString()
+  };
+
+  await env.VENDAS.put(key, JSON.stringify(novo));
+  console.log("Gelo Tutóia - mensagem atualizada no KV:", key);
 }
 
 export default {
@@ -91,8 +110,9 @@ export default {
 
           console.log("Gelo Tutóia - mensagem:", JSON.stringify(resumo));
 
+          let kvKey = null;
           try {
-            await salvarMensagemNoKV(env, resumo);
+            kvKey = await salvarMensagemNoKV(env, resumo);
           } catch (kvError) {
             console.log("Gelo Tutóia - erro ao salvar no KV:", String(kvError));
           }
@@ -100,6 +120,11 @@ export default {
           if (message.type === "audio" && message.audio?.id) {
             if (!env.META_ACCESS_TOKEN) {
               console.log("Gelo Tutóia - áudio detectado, mas META_ACCESS_TOKEN ainda não está configurado");
+              try {
+                await atualizarMensagemNoKV(env, kvKey, { status: "aguardando_token_meta" });
+              } catch (kvError) {
+                console.log("Gelo Tutóia - erro ao atualizar status no KV:", String(kvError));
+              }
             } else {
               try {
                 const mediaInfo = await getWhatsAppMediaInfo(message.audio.id, env.META_ACCESS_TOKEN);
@@ -111,13 +136,35 @@ export default {
 
                 if (mediaInfo.url) {
                   const audioBuffer = await downloadWhatsAppMedia(mediaInfo.url, env.META_ACCESS_TOKEN);
+                  const audioMeta = {
+                    status: "audio_baixado",
+                    audio_bytes: audioBuffer.byteLength,
+                    audio_mime_type: mediaInfo.mime_type || message.audio?.mime_type || "",
+                    audio_file_size_meta: mediaInfo.file_size || null,
+                    audio_baixado_em: new Date().toISOString()
+                  };
+
                   console.log("Gelo Tutóia - áudio baixado com sucesso:", JSON.stringify({
                     bytes: audioBuffer.byteLength,
-                    mime_type: mediaInfo.mime_type || message.audio?.mime_type || ""
+                    mime_type: audioMeta.audio_mime_type
                   }));
+
+                  try {
+                    await atualizarMensagemNoKV(env, kvKey, audioMeta);
+                  } catch (kvError) {
+                    console.log("Gelo Tutóia - erro ao registrar áudio no KV:", String(kvError));
+                  }
                 }
               } catch (mediaError) {
                 console.log("Gelo Tutóia - erro ao obter áudio:", String(mediaError));
+                try {
+                  await atualizarMensagemNoKV(env, kvKey, {
+                    status: "erro_audio_meta",
+                    erro_audio: String(mediaError)
+                  });
+                } catch (kvError) {
+                  console.log("Gelo Tutóia - erro ao registrar falha de áudio no KV:", String(kvError));
+                }
               }
             }
           }
