@@ -1,62 +1,51 @@
 name: Deploy Cloudflare Worker
-
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-
       - name: Build Gelo Tutoia PWA
         run: |
           mkdir -p public/app
           python3 - <<'PY'
-          import base64, re
-          files=[
-            'pwa-src/index.b64.part01','pwa-src/index.b64.part02','pwa-src/index.b64.part03',
-            'pwa-src/index.b64.part04','pwa-src/index.b64.part05','pwa-src/index.b64.part06'
-          ]
+          import base64,re
+          files=['pwa-src/index.b64.part01','pwa-src/index.b64.part02','pwa-src/index.b64.part03','pwa-src/index.b64.part04','pwa-src/index.b64.part05','pwa-src/index.b64.part06']
           out=bytearray()
           for path in files:
-              data=open(path,'r',encoding='utf-8').read()
-              data=re.sub(r'[^A-Za-z0-9+/=]','',data)
-              if path.endswith('part05'):
-                  data=data[:16000]
-              data += '='*((4-len(data)%4)%4)
+              data=re.sub(r'[^A-Za-z0-9+/=]','',open(path,encoding='utf-8').read())
+              if path.endswith('part05'): data=data[:16000]
+              data+='='*((4-len(data)%4)%4)
               out.extend(base64.b64decode(data,validate=False))
-          html=out.decode('utf-8')
-          html += open('pwa-src/index.tail.txt','r',encoding='utf-8').read()
-          html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg')
-          html=html.replace('<buttton ','<button ')
-          html=html.replace("      </div>`:'g}\n", "      </div>`:''}\n")
-          html=html.replace('atualizarBageInbox()','atualizarBadgeInbox()')
-          if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'):
-              raise RuntimeError('PWA HTML incompleto')
+          html=out.decode('utf-8')+open('pwa-src/index.tail.txt',encoding='utf-8').read()
+          html=html.replace('./icon-192.png','./icon.svg').replace('./icon-512.png','./icon.svg').replace('<buttton ','<button ').replace("      </div>`:'g}\n","      </div>`:''}\n").replace('atualizarBageInbox()','atualizarBadgeInbox()')
+          enhance=open('pwa-src/client-sync.js',encoding='utf-8').read()
+          quality='''<style id="hq-ui">html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}button,.cli-btn,.quick-btn,.nav-btn{image-rendering:auto}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}.cli-btn{border-width:1.5px}.cli-arrow,.qi,.ni{filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))}@media(min-resolution:2dppx){.cli-btn,.quick-btn,.nav-btn{border-width:1px}}</style>'''
+          html=html.replace('</body>',quality+'<script>'+enhance+'</script></body>')
+          if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'): raise RuntimeError('PWA HTML incompleto')
           open('public/app/index.html','w',encoding='utf-8').write(html)
-          print('PWA pronta, bytes:',len(html.encode('utf-8')))
+          print('PWA pronta, bytes:',len(html.encode()))
           PY
-
       - name: Validate Gelo Tutoia JavaScript
         run: |
+          node --check parser.js
+          node --check worker-vendas.js
+          node --check pwa-src/client-sync.js
           python3 - <<'PY'
           import re
-          html=open('public/app/index.html','r',encoding='utf-8').read()
+          html=open('public/app/index.html',encoding='utf-8').read()
           scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',html,re.S))
           open('/tmp/gelo-app.js','w',encoding='utf-8').write(scripts)
           PY
           node --check /tmp/gelo-app.js
-
       - name: Deploy to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
