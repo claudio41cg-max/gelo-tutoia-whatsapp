@@ -52,6 +52,7 @@ jobs:
           scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',html,re.S))
           open('/tmp/gelo-app.js','w',encoding='utf-8').write(scripts)
           PY
+          nl -ba /tmp/gelo-app.js | sed -n '955,985p'
           node --check /tmp/gelo-app.js
 
       - name: Deploy to Cloudflare
