@@ -3,15 +3,15 @@
   const syncAnterior=sincronizarInboxRemoto;
   const lancarAnterior=lancarRecebidaNoDia;
   const confirmarAnterior=confirmarVendaRecebida;
-  let statusAtivo=null;
+  let statusAtivo=null,pendencias=[];
   function mostrarStatus(){
     const inicio=document.querySelector('.quick-grid');if(!inicio)return;
     let aviso=inicio.querySelector('.gt-wa-status');
     if(!aviso){aviso=document.createElement('div');aviso.className='gt-wa-status';aviso.style.cssText='grid-column:1/-1;padding:9px 12px;border-radius:10px;background:#12354f;color:#e8f5ff;font-size:13px;text-align:center';inicio.appendChild(aviso)}
-    aviso.textContent=statusAtivo===true?'✓ WhatsApp automático ligado':statusAtivo===false?'⚠ WhatsApp automático aguarda configuração':'Conferindo WhatsApp automático...';
+    aviso.textContent=statusAtivo===true?'✓ WhatsApp automático ligado':statusAtivo===false?'⚠ WhatsApp automático aguarda: '+(pendencias.join(' e ')||'configuração do servidor'):'Conferindo WhatsApp automático...';
   }
   async function checarStatus(){
-    try{const r=await fetch(INBOX_API+'/api/auto-status',{cache:'no-store'});const d=await r.json();statusAtivo=r.ok&&d.auto_configurado===true}
+    try{const r=await fetch(INBOX_API+'/api/auto-status',{cache:'no-store'});const d=await r.json();statusAtivo=r.ok&&d.auto_configurado===true;pendencias=[];if(d.assinatura_configurada===false)pendencias.push('assinatura Meta');if(d.remetentes_configurados===false)pendencias.push('números autorizados')}
     catch(e){statusAtivo=null}
     mostrarStatus();
   }
