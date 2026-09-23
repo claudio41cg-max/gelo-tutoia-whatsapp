@@ -27,6 +27,7 @@ jobs:
               out.extend(base64.b64decode(data,validate=False))
           html=out.decode('utf-8')+open('pwa-src/index.tail.txt',encoding='utf-8').read()
           html=html.replace('./icon-192.png','./icon-v75.svg').replace('./icon-512.png','./icon-v75.svg').replace('./icon.svg','./icon-v75.svg').replace('<buttton ','<button ').replace("      </div>`:'g}\n","      </div>`:''}\n").replace('atualizarBageInbox()','atualizarBadgeInbox()')
+          html=html.replace('<title>Gelo Tutoia v12</title>','<title>Gelo Tutoia v13</title>')
           enhance=open('pwa-src/client-sync.js',encoding='utf-8').read()
           assistant=open('pwa-src/assistente.js',encoding='utf-8').read()
           premium=open('pwa-src/premium-ui.css',encoding='utf-8').read()

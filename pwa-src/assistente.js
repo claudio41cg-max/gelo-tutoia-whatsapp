@@ -13,6 +13,18 @@
   `;
   const style=document.createElement('style');style.textContent=css;document.head.appendChild(style);
   const open=document.createElement('button');open.id='gt-agent-open';open.type='button';open.textContent='✦ Assistente';document.body.appendChild(open);
+  function instalarDestaque(){const inicio=document.querySelector('.quick-grid');
+  if(inicio&&!inicio.querySelector('.gt-agent-feature')){
+    const destaque=document.createElement('button');
+    destaque.className='quick-btn gt-agent-feature';destaque.type='button';destaque.style.gridColumn='1 / -1';
+    destaque.style.background='linear-gradient(135deg,#0786bb,#1357a6)';
+    destaque.innerHTML='<span class="qi">🎙️</span> NOVO: ASSISTENTE DE VENDAS';
+    inicio.prepend(destaque);
+    destaque.addEventListener('click',()=>open.click());
+  }}
+  instalarDestaque();
+  const telaClientesAnterior=telaClientes;
+  telaClientes=function(...args){const r=telaClientesAnterior.apply(this,args);setTimeout(instalarDestaque,0);return r};
   const panel=document.createElement('section');panel.id='gt-agent';panel.setAttribute('aria-label','Assistente Gelo Tutóia');
   panel.innerHTML=`<div id="gt-agent-inner"><button type="button" id="gt-agent-close" class="gt-quiet">← Voltar</button><h2>Assistente Gelo Tutóia</h2><p>Diga uma venda, uma despesa, “resumo do dia” ou “desfazer última venda”. Confirme cada lançamento antes de salvar.</p><div id="gt-agent-reply" role="status">Como posso ajudar, Cláudio?</div><form id="gt-agent-form"><input id="gt-agent-input" autocomplete="off" aria-label="Mensagem" placeholder="Ex.: Marcelo 1, dois filtrados, PIX"><div class="gt-row"><button type="submit">Enviar</button><button type="button" id="gt-agent-mic" class="gt-quiet">🎙️ Falar</button></div></form><div id="gt-agent-actions" class="gt-row"></div></div>`;
   document.body.appendChild(panel);
