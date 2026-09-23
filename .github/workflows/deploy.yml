@@ -39,6 +39,7 @@ jobs:
           html=html.replace("origem:'WhatsApp Automático',", "origem:'WhatsApp Automático',auto_elegivel:x.auto_elegivel===true,")
           html=html.replace("const pag=['Dinheiro','PIX','Fiado'].includes(x.pagamento)?x.pagamento:null;", "const pag=['Dinheiro','PIX','Fiado'].includes(x.pagamento)?x.pagamento:'Não informado';")
           html=html.replace('||qtd<=0||!pag)', '||qtd<=0)')
+          html=html.replace('setInterval(()=>sincronizarInboxRemoto(false),60000);', 'setInterval(()=>{if(!document.hidden)sincronizarInboxRemoto(false)},30000);')
           if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'): raise RuntimeError('PWA HTML incompleto')
           open('public/app/index.html','w',encoding='utf-8').write(html)
           print('PWA premium pronta, bytes:',len(html.encode()))
