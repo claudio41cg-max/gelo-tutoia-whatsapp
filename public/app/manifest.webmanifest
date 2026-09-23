@@ -3,7 +3,7 @@
   "name": "Gelo Tutóia",
   "short_name": "Gelo Tutóia",
   "description": "Sistema de vendas Gelo Tutóia",
-  "start_url": "./?pwa=75",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#061422",
