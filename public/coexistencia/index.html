@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gelo Tutóia — Coexistência WhatsApp</title>
+<style>
+:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#07131f;color:#eef6ff;min-height:100vh}
+main{max-width:680px;margin:0 auto;padding:24px 18px 48px}
+.card{background:#0d1f30;border:1px solid #24445d;border-radius:20px;padding:20px;margin:14px 0;box-shadow:0 12px 32px rgba(0,0,0,.22)}
+h1{font-size:1.55rem;margin:0 0 8px}
+h2{font-size:1.05rem;margin:0 0 12px}
+p{line-height:1.5;color:#c9d9e6}
+label{display:block;margin:14px 0 7px;font-weight:700}
+input[type=text]{width:100%;padding:13px 14px;border-radius:12px;border:1px solid #42627c;background:#07131f;color:#fff;font-size:16px}
+button{width:100%;border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px}
+.primary{background:#25d366;color:#04160b}
+.secondary{background:#17324a;color:#e9f6ff;border:1px solid #315a78}
+button:disabled{opacity:.45;cursor:not-allowed}
+.ok{color:#6fe69d}.warn{color:#ffd67b}.bad{color:#ff8f8f}
+.status{padding:12px 14px;background:#07131f;border-radius:12px;border:1px solid #26465f;white-space:pre-wrap;line-height:1.45}
+.small{font-size:.88rem;color:#9fb4c6}
+.check{display:flex;gap:10px;align-items:flex-start;margin-top:14px}
+.check input{margin-top:4px;transform:scale(1.25)}
+code{word-break:break-all}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Gelo Tutóia — WhatsApp Coexistência</h1>
+    <p>Esta página é separada do webhook e das vendas. Ela serve apenas para abrir o Cadastro Incorporado da Meta no modo <strong>WhatsApp Business App + Cloud API</strong>.</p>
+    <p class="small">Nenhum token, senha ou chave secreta é pedido nesta tela.</p>
+  </div>
+
+  <div class="card">
+    <h2>1. Configuração pública da Meta</h2>
+    <label for="appId">ID do aplicativo Meta</label>
+    <input id="appId" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex.: 123456789...">
+    <label for="configId">ID da configuração do Cadastro Incorporado</label>
+    <input id="configId" type="text" autocomplete="off" placeholder="Configuration ID">
+    <button id="prepare" class="secondary">Preparar conexão</button>
+    <div id="sdkStatus" class="status">Aguardando os dois IDs públicos.</div>
+  </div>
+
+  <div class="card">
+    <h2>2. Proteção do número principal</h2>
+    <div class="check">
+      <input id="confirmBusiness" type="checkbox">
+      <label for="confirmBusiness" style="margin:0;font-weight:600">Confirmo que o número que pretendo usar está no aplicativo <strong>WhatsApp Business</strong>, e não vou aceitar nenhuma tela que peça migração/desconexão do número.</label>
+    </div>
+    <button id="launch" class="primary" disabled>Abrir Coexistência</button>
+    <p class="small">Se a Meta mostrar apenas “adicionar novo número”, “migrar número” ou “desconectar do WhatsApp”, pare e feche a janela. O fluxo correto deve oferecer o onboarding do WhatsApp Business App.</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Retorno da Meta</h2>
+    <div id="result" class="status">Nenhum fluxo iniciado.</div>
+  </div>
+</main>
+
+<script>
+let prepared=false;
+let fbInitialized=false;
+
+function digits(v){return String(v||'').trim()}
+function setText(id,text,cls=''){const el=document.getElementById(id);el.textContent=text;el.className='status '+cls}
+function refreshLaunch(){
+  document.getElementById('launch').disabled=!(prepared&&document.getElementById('confirmBusiness').checked);
+}
+
+function initFacebook(appId){
+  return new Promise((resolve,reject)=>{
+    const start=()=>{
+      try{
+        if(!window.FB) return reject(new Error('SDK da Meta não carregou.'));
+        if(!fbInitialized){
+          FB.init({appId,autoLogAppEvents:true,xfbml:false,version:'v26.0'});
+          fbInitialized=true;
+        }
+        resolve();
+      }catch(e){reject(e)}
+    };
+    if(window.FB){start();return}
+    window.fbAsyncInit=start;
+    if(document.getElementById('facebook-jssdk')) return;
+    const js=document.createElement('script');
+    js.id='facebook-jssdk';
+    js.async=true;
+    js.defer=true;
+    js.crossOrigin='anonymous';
+    js.src='https://connect.facebook.net/pt_BR/sdk.js';
+    js.onerror=()=>reject(new Error('Não foi possível carregar o SDK da Meta.'));
+    document.head.appendChild(js);
+  });
+}
+
+document.getElementById('prepare').addEventListener('click',async()=>{
+  const appId=digits(document.getElementById('appId').value);
+  const configId=digits(document.getElementById('configId').value);
+  if(!appId||!configId){
+    prepared=false;refreshLaunch();
+    setText('sdkStatus','Preencha o ID do aplicativo e o ID da configuração.','warn');
+    return;
+  }
+  setText('sdkStatus','Carregando o SDK oficial da Meta...');
+  try{
+    await initFacebook(appId);
+    sessionStorage.setItem('gelo_meta_app_id',appId);
+    sessionStorage.setItem('gelo_meta_config_id',configId);
+    prepared=true;
+    refreshLaunch();
+    setText('sdkStatus','Pronto. A página está preparada para abrir somente o fluxo de Coexistência.','ok');
+  }catch(e){
+    prepared=false;refreshLaunch();
+    setText('sdkStatus','Erro: '+(e&&e.message?e.message:String(e)),'bad');
+  }
+});
+
+document.getElementById('confirmBusiness').addEventListener('change',refreshLaunch);
+
+document.getElementById('launch').addEventListener('click',()=>{
+  const configId=digits(document.getElementById('configId').value);
+  if(!prepared||!window.FB||!configId) return;
+
+  setText('result','Abrindo o fluxo da Meta...');
+
+  FB.login((response)=>{
+    if(response&&response.authResponse&&response.authResponse.code){
+      setText('result','A Meta retornou o código de autorização. O código não é exibido nem armazenado nesta página. Aguarde o evento final do onboarding.','ok');
+    }else{
+      setText('result','O fluxo foi fechado ou não retornou autorização. Nenhuma alteração foi feita pelo nosso servidor.','warn');
+    }
+  },{
+    config_id:configId,
+    response_type:'code',
+    override_default_response_type:true,
+    extras:{
+      setup:{},
+      featureType:'whatsapp_business_app_onboarding',
+      sessionInfoVersion:'3'
+    }
+  });
+});
+
+window.addEventListener('message',(event)=>{
+  if(!/^https:\/\/(www\.)?facebook\.com$/.test(event.origin)) return;
+  let data=event.data;
+  if(typeof data==='string'){
+    try{data=JSON.parse(data)}catch(_){return}
+  }
+  if(!data||data.type!=='WA_EMBEDDED_SIGNUP') return;
+
+  if(data.event==='FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'){
+    const waba=data.data&&data.data.waba_id?data.data.waba_id:'não informado';
+    const phone=data.data&&data.data.phone_number_id?data.data.phone_number_id:'não informado';
+    setText('result','Coexistência concluída pela Meta.\nWABA ID: '+waba+'\nPhone Number ID: '+phone+'\n\nAinda falta o nosso servidor trocar o código por acesso permanente antes de usar em produção.','ok');
+    return;
+  }
+  if(data.event==='CANCEL'){
+    setText('result','Fluxo cancelado. Nenhuma alteração foi feita pelo nosso servidor.','warn');
+    return;
+  }
+  if(data.event==='ERROR'){
+    setText('result','A Meta retornou um erro no Cadastro Incorporado. Feche o fluxo e não migre o número pelo cadastro comum.','bad');
+    return;
+  }
+  setText('result','Evento recebido da Meta: '+String(data.event||'desconhecido'));
+});
+
+window.addEventListener('DOMContentLoaded',()=>{
+  const app=sessionStorage.getItem('gelo_meta_app_id')||'';
+  const cfg=sessionStorage.getItem('gelo_meta_config_id')||'';
+  document.getElementById('appId').value=app;
+  document.getElementById('configId').value=cfg;
+});
+</script>
+</body>
+</html>
