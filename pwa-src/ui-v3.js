@@ -55,12 +55,18 @@
     .gt-redbtn{border:0;border-radius:12px;padding:12px;background:#b52121;color:#fff;font-weight:900}
     .gt-greenbtn{border:0;border-radius:12px;padding:12px;background:#168d4b;color:#fff;font-weight:900}
     .gt-paid{opacity:.72}
+    .gt-historico-btn{display:block;width:calc(100% - 28px);margin:8px 14px;padding:20px 22px;border-radius:18px;border:2px solid #c99a32;background:linear-gradient(135deg,#7a5424,#a77424);color:#fff;font-size:22px;font-weight:900;cursor:pointer;text-align:center}
+    .gt-week-s{font-size:23px;font-weight:1000;color:#8ed7ff;vertical-align:middle}
+    .gt-week-n{font-size:16px;font-weight:900;color:#d7e6f1;vertical-align:middle}
+    .gt-week-total{color:#36e27f;font-weight:1000}
+    .gt-day-value{color:#36e27f;font-weight:800}
+    .gt-day-qty,.gt-day-money{color:#36e27f;font-weight:800}
   `;document.head.appendChild(st);
 
   window.abrirEscolhaFiltrado=function(nome){
     const p=produtos();
     if(excecoes.has(norm(nome))){window.gtPesoCur=10;telaQtd(nome,'filt',P_FILT[nome]);return}
-    const u10=p.usa10?.[nome]!==false,u5=p.usa5?.[nome]===true,p5=Number(p.preco5?.[nome])||0;
+    const u10=p.usa10?.[nome]!==false,u5=true,p5=Number(p.preco5?.[nome])||0;
     let h=`<div class="pg-hdr"><div class="pg-title">${esc(nome)}</div><div class="pg-sub">ESCOLHA O FILTRADO</div></div>`;
     if(u10)h+=`<button class="tipo-btn tp-filt" onclick="telaQtdPeso('${esc(nome)}',10,${Number(P_FILT[nome])||0})"><span class="tn">💎 FILTRADO 10 KG</span><span class="tp">${dinheiro(P_FILT[nome])}/saco</span></button>`;
     if(u5)h+=`<button class="tipo-btn tp-filt" onclick="telaQtdPeso('${esc(nome)}',5,${p5})"><span class="tn">💎 FILTRADO 5 KG</span><span class="tp">${p5>0?dinheiro(p5)+'/saco':'Configure o preço'}</span></button>`;
@@ -79,7 +85,7 @@
       ${t!=='filtrado'?`<button class="tipo-btn tp-esc" onclick="window.gtPesoCur=20;telaQtd('${esc(nome)}','esc',${Number(P_ESC[nome])||0})"><span class="tn">❄ ESCAMAS</span><span class="tp">${dinheiro(P_ESC[nome])}/saco</span></button>`:''}
       ${t!=='escamas'?`<button class="tipo-btn tp-filt" onclick="abrirEscolhaFiltrado('${esc(nome)}')"><span class="tn">💎 FILTRADO</span><span class="tp">${excecoes.has(norm(nome))?dinheiro(P_FILT[nome])+'/saco':'Escolher tamanho'}</span></button>`:''}
       <button class="tipo-btn tp-obs gt-corrigir" onclick="telaCorrecoesHoje('${esc(nome)}')"><span class="tn">✏️ CORRIGIR VENDA</span></button>
-      <button class="act-btn btn-rel" onclick="telaHistoricoCliente('${esc(nome)}')">📊 HISTÓRICO</button>
+      <button class="act-btn gt-historico-btn" onclick="telaHistoricoCliente('${esc(nome)}')">📊 HISTÓRICO</button>
       <button class="act-btn btn-back" onclick="fecharSub(true)">‹ Voltar</button></div>`)
   };
 
@@ -108,11 +114,11 @@
     if(!wk.length)h+='<div class="conf-card">Nenhuma venda deste cliente neste mês.</div>';
     wk.forEach((w,wi)=>{
       const wt=zerado();w.dias.forEach(d=>soma(wt,somaVendas(d.vpc[nome])));
-      h+=`<div class="gt-week"><div class="gt-week-h"><span>SEMANA ${wi+1} · ${dataBR(w.start).slice(0,5)} a ${dataBR(w.end).slice(0,5)}</span><span>${wt.sacos} sacos · ${dinheiro(wt.valor)}</span></div>`;
+      h+=`<div class="gt-week"><div class="gt-week-h"><span><span class="gt-week-s">S</span><span class="gt-week-n">-${wi+1}</span> · ${dataBR(w.start).slice(0,5)} a ${dataBR(w.end).slice(0,5)}</span><span class="gt-week-total">${wt.sacos} sacos · ${dinheiro(wt.valor)}</span></div>`;
       w.dias.forEach(d=>{
         const dt=parseData(d.data),dv=(d.vpc[nome]||[]).filter(v=>v.tipo!=='obs'),x=somaVendas(dv);
         const linhas=[];if(showsE&&x.esc)linhas.push('Escamas: '+x.esc);if(showsF&&x.f10)linhas.push('Filtrado 10 kg: '+x.f10);if(showsF&&x.f5)linhas.push('Filtrado 5 kg: '+x.f5);
-        h+=`<div class="gt-day"><div class="gt-day-top"><div><b>${dt.toLocaleDateString('pt-BR',{weekday:'short'})} · ${d.data}</b> <span style="color:var(--gold)">${dinheiro(x.valor)}</span></div><button class="gt-pencil" onclick="telaDiaCliente('${esc(nome)}','${d.data}')">✏️</button></div><div class="gt-day-lines">${linhas.join(' · ')} · PIX ${dinheiro(x.pix)} · Dinheiro ${dinheiro(x.din)} · Fiado ${dinheiro(x.fiado)}</div></div>`
+        h+=`<div class="gt-day"><div class="gt-day-top"><div><b>${dt.toLocaleDateString('pt-BR',{weekday:'short'})} · ${d.data}</b> <span class="gt-day-value">${dinheiro(x.valor)}</span></div><button class="gt-pencil" onclick="telaDiaCliente('${esc(nome)}','${d.data}')">✏️</button></div><div class="gt-day-lines"><span class="gt-day-qty">${linhas.join(' · ')}</span> · PIX <span class="gt-day-money">${dinheiro(x.pix)}</span> · Dinheiro <span class="gt-day-money">${dinheiro(x.din)}</span> · Fiado <span class="gt-day-money">${dinheiro(x.fiado)}</span></div></div>`
       });h+='</div>'
     });
     h+=`<button class="act-btn btn-back" onclick="telaVenda('${esc(nome)}')">‹ Voltar</button>`;abrirSub(h)
@@ -120,8 +126,8 @@
 
   window.telaDiaCliente=function(nome,data){
     const ds=dias(),d=ds.find(x=>x.data===data),vs=d?.vpc?.[nome]||[];
-    let h=`<div class="pg-hdr"><div class="pg-title">${esc(nome)}</div><div class="pg-sub">${data} · corrigir ou excluir</div></div>`;
-    vs.forEach((v,i)=>{if(v.tipo!=='obs')h+=`<div class="gt-sale-row"><b>${produto(v)}</b> · ${v.qtd} saco(s) · ${v.pag} · ${dinheiro(v.valor)}<button class="act-btn btn-rel" style="margin:7px 0 0" onclick="editarVendaCliente('${esc(nome)}','${data}',${i})">✏️ Corrigir / excluir</button></div>`});
+    let h=`<div class="pg-hdr"><div class="pg-title">${esc(nome)}</div><div class="pg-sub">${data} · excluir registro</div></div>`;
+    vs.forEach((v,i)=>{if(v.tipo!=='obs')h+=`<div class="gt-sale-row"><b>${produto(v)}</b> · ${v.qtd} saco(s) · ${v.pag} · ${dinheiro(v.valor)}<button class="act-btn btn-reset" style="margin:7px 0 0;background:linear-gradient(135deg,#b52121,#7f1111);color:#fff" onclick="excluirVendaCliente('${esc(nome)}','${data}',${i})">🗑 Excluir</button></div>`});
     h+=`<button class="act-btn btn-back" onclick="telaHistoricoCliente('${esc(nome)}',${mesOffset})">‹ Voltar</button>`;abrirSub(h)
   };
 
