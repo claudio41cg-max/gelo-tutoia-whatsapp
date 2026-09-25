@@ -38,9 +38,9 @@ code{word-break:break-all}
   <div class="card">
     <h2>1. Configuração pública da Meta</h2>
     <label for="appId">ID do aplicativo Meta</label>
-    <input id="appId" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex.: 123456789...">
+    <input id="appId" type="text" inputmode="numeric" autocomplete="off" value="3163437487184018" readonly>
     <label for="configId">ID da configuração do Cadastro Incorporado</label>
-    <input id="configId" type="text" autocomplete="off" placeholder="Configuration ID">
+    <input id="configId" type="text" autocomplete="off" value="2274979843295474" readonly>
     <button id="prepare" class="secondary">Preparar conexão</button>
     <div id="sdkStatus" class="status">Aguardando os dois IDs públicos.</div>
   </div>
@@ -171,8 +171,8 @@ window.addEventListener('message',(event)=>{
 });
 
 window.addEventListener('DOMContentLoaded',()=>{
-  const app=sessionStorage.getItem('gelo_meta_app_id')||'';
-  const cfg=sessionStorage.getItem('gelo_meta_config_id')||'';
+  const app='3163437487184018';
+  const cfg='2274979843295474';
   document.getElementById('appId').value=app;
   document.getElementById('configId').value=cfg;
 });
