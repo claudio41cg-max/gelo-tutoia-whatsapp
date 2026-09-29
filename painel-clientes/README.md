@@ -16,3 +16,5 @@ Painel piloto para cadastrar clientes e conectar cada número ao WuzAPI.
 5. O painel acompanha status e possui controles de IA e atendimento manual.
 
 A IA ainda não responde mensagens nesta primeira etapa. Os controles já ficam gravados para a próxima etapa, em que o webhook será ligado ao agente.
+
+Deploy inicial do painel configurado no Railway como serviço separado, sem alterar os serviços openwa-test e wuzapi-test.
