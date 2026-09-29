@@ -16,6 +16,7 @@ const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
 const SEED_CLIENT_BUSINESS_NAME = String(process.env.SEED_CLIENT_BUSINESS_NAME || "").trim();
 const SEED_CLIENT_PHONE = String(process.env.SEED_CLIENT_PHONE || "").trim();
 const SEED_CLIENT_TOKEN = String(process.env.SEED_CLIENT_TOKEN || "").trim();
+const LEGACY_SEED_PHONE = "5521991777811";
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -26,6 +27,22 @@ function readClients() {
 }
 function writeClients(clients) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(clients, null, 2));
+}
+
+function migrateLegacyClaroNumber() {
+  if (!SEED_CLIENT_PHONE) return;
+  const clients = readClients();
+  let changed = false;
+  for (const c of clients) {
+    if (String(c.phone || "") === LEGACY_SEED_PHONE) {
+      c.phone = SEED_CLIENT_PHONE;
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeClients(clients);
+    console.log("Número Claro corrigido para:", SEED_CLIENT_PHONE);
+  }
 }
 function publicClient(c) {
   return {
@@ -237,6 +254,7 @@ app.post("/api/clients/:id/disconnect", async (req, res) => {
 });
 
 async function start() {
+  migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
   catch (e) { console.error("Falha ao preparar cliente inicial:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
