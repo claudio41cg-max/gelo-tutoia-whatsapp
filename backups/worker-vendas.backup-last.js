@@ -4,7 +4,7 @@ function corsHeaders(){return{"Access-Control-Allow-Origin":"*","Access-Control-
 function json(data,init={}){return new Response(JSON.stringify(data),{...init,headers:{"Content-Type":"application/json; charset=utf-8",...corsHeaders(),...(init.headers||{})}})}
 function somenteDigitos(v=""){return String(v).replace(/\D/g,"")}
 function remetenteAutorizado(env,r){const raw=String(env.AUTHORIZED_SENDERS||"").trim();if(!raw)return true;return raw.split(/[\s,;]+/).map(somenteDigitos).filter(Boolean).includes(somenteDigitos(r))}
-function autoConfigurado(env){return Boolean(String(env.AUTHORIZED_SENDERS||"").trim()&&env.META_APP_SECRET&&env.VENDAS)}
+function autoConfigurado(env,origem="meta"){return Boolean(String(env.AUTHORIZED_SENDERS||"").trim()&&env.VENDAS&&(origem==="wuzapi"||env.META_APP_SECRET))}
 async function assinaturaValida(request,body,secret){
   if(!secret)return true; // Mantém a entrada antiga para revisão, sem autorizar lançamento automático.
   const recebido=request.headers.get("X-Hub-Signature-256")||"";
@@ -23,9 +23,58 @@ function arrayBufferToBase64(a){const b=new Uint8Array(a);let s="";for(let i=0;i
 async function transcreverAudio(env,a){if(!env.AI)throw new Error("binding AI não disponível");const r=await env.AI.run(TRANSCRIBE_MODEL,{audio:arrayBufferToBase64(a),task:"transcribe",language:"pt",vad_filter:true,initial_prompt:"Vendas de gelo Gelo Tutóia. Preserve nomes e apelidos dos clientes, quantidades, PIX, dinheiro, fiado, escamas e filtrado."});return String(r?.text||"").trim()}
 function chaveMensagem(id){return`mensagem:${id||`sem-id-${Date.now()}`}`}
 async function salvar(env,key,dados){if(!env.VENDAS||!key)return;const atual=await env.VENDAS.get(key,{type:"json"})||{};await env.VENDAS.put(key,JSON.stringify({...atual,...dados,atualizado_em:new Date().toISOString()}))}
-async function interpretar(env,key,texto,remetente){const venda=interpretarVenda(texto,await getConfig(env));const auto_elegivel=autoConfigurado(env)&&remetenteAutorizado(env,remetente)&&!venda.precisa_revisao&&venda.total_sacos>0;await salvar(env,key,{status:"venda_interpretada",venda,auto_elegivel,interpretado_em:new Date().toISOString()});console.log("Gelo Tutóia - venda interpretada:",JSON.stringify(venda))}
+async function interpretar(env,key,texto,remetente,origem="meta"){const venda=interpretarVenda(texto,await getConfig(env));const auto_elegivel=autoConfigurado(env,origem)&&remetenteAutorizado(env,remetente)&&!venda.precisa_revisao&&venda.total_sacos>0;await salvar(env,key,{status:"venda_interpretada",venda,auto_elegivel,origem,interpretado_em:new Date().toISOString()});console.log("Gelo Tutóia - venda interpretada:",JSON.stringify(venda))}
 function itensVendaDoRegistro(key,reg){const v=reg?.venda;if(!v||!v.cliente)return[];const st=reg.status_itens||{},base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:reg.auto_elegivel===true},out=[];for(const[tipo,q,suf]of[["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){const id=`${key}:${suf}`;if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo})}return out}
 async function listarInbox(env){if(!env.VENDAS)return[];const out=[];let cursor;do{const p=await env.VENDAS.list({prefix:"mensagem:",cursor,limit:100});for(const k of p.keys){const r=await env.VENDAS.get(k.name,{type:"json"});if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r))}cursor=p.list_complete?undefined:p.cursor}while(cursor);return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)))}
+
+function jidTexto(v){
+  if(!v)return"";
+  if(typeof v==="string")return v;
+  if(typeof v==="object"){
+    const user=v.User??v.user??v.ID??v.id??"";
+    const server=v.Server??v.server??"s.whatsapp.net";
+    if(user)return String(user)+(String(user).includes("@")?"":"@"+server);
+  }
+  return String(v||"");
+}
+function primeiroValor(...v){for(const x of v)if(x!==undefined&&x!==null&&x!=="")return x;return""}
+function textoMensagemWuzapi(m={}){
+  return String(primeiroValor(
+    m.conversation,m.Conversation,
+    m.extendedTextMessage?.text,m.ExtendedTextMessage?.text,
+    m.extendedTextMessage?.Text,m.ExtendedTextMessage?.Text,
+    m.imageMessage?.caption,m.ImageMessage?.caption,
+    m.videoMessage?.caption,m.VideoMessage?.caption,
+    m.documentMessage?.caption,m.DocumentMessage?.caption
+  )||"").trim();
+}
+function normalizarEventoWuzapi(body={}){
+  let p=body;
+  if(typeof body?.jsonData==="string"){try{p=JSON.parse(body.jsonData)}catch{return null}}
+  else if(body?.jsonData&&typeof body.jsonData==="object")p=body.jsonData;
+  const parece=body?.instanceName||body?.userID||p?.type||p?.event||p?.Event;
+  if(!parece)return null;
+  const tipo=String(p?.type||p?.Type||"");
+  if(tipo&&tipo!=="Message")return{wuzapi:true,ignorar:true,tipo};
+  const e=p?.event||p?.Event||{};
+  const info=e?.Info||e?.info||p?.Info||p?.info||{};
+  const m=e?.Message||e?.message||p?.Message||p?.message||{};
+  const deMim=Boolean(info?.IsFromMe??info?.isFromMe??false);
+  const remetente=jidTexto(primeiroValor(info?.Sender,info?.sender,info?.Chat,info?.chat));
+  const id=String(primeiroValor(info?.ID,info?.Id,info?.id,p?.id,p?.ID)||"");
+  const nome=String(primeiroValor(info?.PushName,info?.pushName,info?.pushname)||"");
+  const texto=textoMensagemWuzapi(m);
+  const audio=Boolean(m?.audioMessage||m?.AudioMessage||m?.audio||m?.Audio);
+  const base64=String(primeiroValor(p?.base64,p?.Base64,body?.base64,body?.Base64)||"");
+  return{wuzapi:true,ignorar:false,tipo:"Message",deMim,remetente,id,nome,texto,audio,base64,raw:p};
+}
+function base64ParaArrayBuffer(v=""){
+  const s=String(v).replace(/^data:[^;]+;base64,/i,"").replace(/\s+/g,"");
+  const bin=atob(s),u=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  return u.buffer;
+}
+
 export default{async fetch(request,env){const url=new URL(request.url);if(request.method==="OPTIONS")return new Response(null,{status:204,headers:corsHeaders()});
 if(request.method==="GET"&&url.pathname==="/api/clientes"){try{return json({ok:true,config:await getConfig(env)})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="POST"&&url.pathname==="/api/clientes"){try{return json({ok:true,clientes:await putConfig(env,await request.json())})}catch(e){return json({ok:false,erro:String(e)},{status:400})}}
@@ -33,5 +82,29 @@ if(request.method==="GET"&&url.pathname==="/api/inbox"){try{return json({ok:true
 if(request.method==="GET"&&url.pathname==="/api/auto-status")return json({ok:true,auto_configurado:autoConfigurado(env),assinatura_configurada:!!env.META_APP_SECRET,remetentes_configurados:!!String(env.AUTHORIZED_SENDERS||"").trim()});
 if(request.method==="POST"&&url.pathname==="/api/inbox/status"){try{const b=await request.json(),key=String(b?.remote_key||""),id=String(b?.remote_id||""),status=String(b?.status||"");if(!key.startsWith("mensagem:")||!id.startsWith(key+":"))return json({ok:false,erro:"Chave inválida"},{status:400});if(!["confirmada_app","ignorada_app"].includes(status))return json({ok:false,erro:"Status inválido"},{status:400});const reg=await env.VENDAS.get(key,{type:"json"})||{};await salvar(env,key,{status_itens:{...(reg.status_itens||{}),[id]:status},status_app_em:new Date().toISOString()});return json({ok:true})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="GET"){const mode=url.searchParams.get("hub.mode"),token=url.searchParams.get("hub.verify_token"),challenge=url.searchParams.get("hub.challenge");if(mode==="subscribe"&&token===VERIFY_TOKEN)return new Response(challenge,{status:200,headers:{"Content-Type":"text/plain"}});return new Response("Token de verificação inválido",{status:403})}
-if(request.method==="POST"){try{const raw=await request.text();if(!await assinaturaValida(request,raw,env.META_APP_SECRET))return new Response("Assinatura inválida",{status:403});const body=JSON.parse(raw),value=body?.entry?.[0]?.changes?.[0]?.value,message=value?.messages?.[0],contact=value?.contacts?.[0];if(!message)return new Response("EVENT_RECEIVED",{status:200});const remetente=message.from||contact?.wa_id||"desconhecido";if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});const key=chaveMensagem(message.id),resumo={tipo:message.type||"desconhecido",remetente,nome:contact?.profile?.name||"",mensagem_id:message.id||"",texto:message.text?.body||"",audio_id:message.audio?.id||"",audio_mime_type:message.audio?.mime_type||"",audio_voz:message.audio?.voice===true,status:"pendente",recebido_em:new Date().toISOString()};await salvar(env,key,resumo);if(message.type==="text"&&resumo.texto){try{await interpretar(env,key,resumo.texto,remetente)}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}if(message.type==="audio"&&message.audio?.id){if(!env.META_ACCESS_TOKEN)await salvar(env,key,{status:"aguardando_token_meta"});else try{const media=await getWhatsAppMediaInfo(message.audio.id,env.META_ACCESS_TOKEN);if(media.url){const audio=await downloadWhatsAppMedia(media.url,env.META_ACCESS_TOKEN);await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength});try{const texto=await transcreverAudio(env,audio);await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});await interpretar(env,key,texto,remetente)}catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}}}catch(e){await salvar(env,key,{status:"erro_audio_meta",erro_audio:String(e)})}}return new Response("EVENT_RECEIVED",{status:200})}catch(e){console.log("Gelo Tutóia - erro no webhook:",String(e));return new Response("EVENT_RECEIVED",{status:200})}}
+if(request.method==="POST"){try{const raw=await request.text();const body=JSON.parse(raw);
+const wz=normalizarEventoWuzapi(body);
+if(wz?.wuzapi){
+  if(wz.ignorar||wz.deMim)return new Response("EVENT_RECEIVED",{status:200});
+  const remetente=wz.remetente||"desconhecido";
+  if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
+  const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:new Date().toISOString()};
+  await salvar(env,key,resumo);
+  if(wz.texto){try{await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}
+  else if(wz.audio){
+    if(!wz.base64)await salvar(env,key,{status:"audio_wuzapi_sem_base64"});
+    else try{
+      const audio=base64ParaArrayBuffer(wz.base64);
+      await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength,origem_audio:"wuzapi"});
+      const texto=await transcreverAudio(env,audio);
+      await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});
+      await interpretar(env,key,texto,remetente,"wuzapi");
+    }catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}
+  }else{
+    await salvar(env,key,{status:"wuzapi_sem_texto"});
+  }
+  return new Response("EVENT_RECEIVED",{status:200});
+}
+if(!await assinaturaValida(request,raw,env.META_APP_SECRET))return new Response("Assinatura inválida",{status:403});
+const value=body?.entry?.[0]?.changes?.[0]?.value,message=value?.messages?.[0],contact=value?.contacts?.[0];if(!message)return new Response("EVENT_RECEIVED",{status:200});const remetente=message.from||contact?.wa_id||"desconhecido";if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});const key=chaveMensagem(message.id),resumo={tipo:message.type||"desconhecido",remetente,nome:contact?.profile?.name||"",mensagem_id:message.id||"",texto:message.text?.body||"",audio_id:message.audio?.id||"",audio_mime_type:message.audio?.mime_type||"",audio_voz:message.audio?.voice===true,status:"pendente",recebido_em:new Date().toISOString()};await salvar(env,key,resumo);if(message.type==="text"&&resumo.texto){try{await interpretar(env,key,resumo.texto,remetente)}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}if(message.type==="audio"&&message.audio?.id){if(!env.META_ACCESS_TOKEN)await salvar(env,key,{status:"aguardando_token_meta"});else try{const media=await getWhatsAppMediaInfo(message.audio.id,env.META_ACCESS_TOKEN);if(media.url){const audio=await downloadWhatsAppMedia(media.url,env.META_ACCESS_TOKEN);await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength});try{const texto=await transcreverAudio(env,audio);await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});await interpretar(env,key,texto,remetente)}catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}}}catch(e){await salvar(env,key,{status:"erro_audio_meta",erro_audio:String(e)})}}return new Response("EVENT_RECEIVED",{status:200})}catch(e){console.log("Gelo Tutóia - erro no webhook:",String(e));return new Response("EVENT_RECEIVED",{status:200})}}
 return new Response("Webhook Gelo Tutóia ativo",{status:200})}}
