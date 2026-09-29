@@ -60,13 +60,18 @@ function normalizarEventoWuzapi(body={}){
   const info=e?.Info||e?.info||p?.Info||p?.info||{};
   const m=e?.Message||e?.message||p?.Message||p?.message||{};
   const deMim=Boolean(info?.IsFromMe??info?.isFromMe??false);
-  const remetente=jidTexto(primeiroValor(info?.Sender,info?.sender,info?.Chat,info?.chat));
+  const chat=jidTexto(primeiroValor(info?.Chat,info?.chat));
+  const senderAlt=jidTexto(primeiroValor(info?.SenderAlt,info?.senderAlt));
+  const sender=jidTexto(primeiroValor(info?.Sender,info?.sender));
+  const remetente=senderAlt||sender||chat;
+  const isGroup=Boolean(info?.IsGroup??info?.isGroup??false)||/@g\.us$/i.test(chat);
+  const isBroadcast=/@broadcast$/i.test(chat)||/^status@broadcast$/i.test(chat);
   const id=String(primeiroValor(info?.ID,info?.Id,info?.id,p?.id,p?.ID)||"");
   const nome=String(primeiroValor(info?.PushName,info?.pushName,info?.pushname)||"");
   const texto=textoMensagemWuzapi(m);
   const audio=Boolean(m?.audioMessage||m?.AudioMessage||m?.audio||m?.Audio);
   const base64=String(primeiroValor(p?.base64,p?.Base64,body?.base64,body?.Base64)||"");
-  return{wuzapi:true,ignorar:false,tipo:"Message",deMim,remetente,id,nome,texto,audio,base64,raw:p};
+  return{wuzapi:true,ignorar:isGroup||isBroadcast,tipo:"Message",deMim,remetente,id,nome,texto,audio,base64,chat,isGroup,isBroadcast,raw:p};
 }
 function base64ParaArrayBuffer(v=""){
   const s=String(v).replace(/^data:[^;]+;base64,/i,"").replace(/\s+/g,"");
