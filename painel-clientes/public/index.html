@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp — Agentes de IA Clientes</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color-scheme:dark;--bg:#0b1014;--card:#141b21;--line:#26323c;--text:#eef4f7;--muted:#93a3ad;--ok:#25d366;--warn:#f4b942;--danger:#ff6464;--blue:#5aa9ff}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#0b1014,#101820);color:var(--text)}.wrap{max-width:1100px;margin:auto;padding:20px}.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.brand h1{font-size:24px;margin:0}.brand p{margin:5px 0 0;color:var(--muted)}button,input{font:inherit}.btn{border:0;border-radius:12px;padding:11px 14px;font-weight:700;cursor:pointer}.primary{background:var(--ok);color:#05150c}.secondary{background:#202b34;color:#fff;border:1px solid var(--line)}.danger{background:#35191b;color:#ffdede;border:1px solid #633}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-top:18px}.card{background:rgba(20,27,33,.96);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 10px 28px #0005}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.name{font-size:18px;font-weight:800}.muted{color:var(--muted);font-size:13px}.badge{font-size:12px;font-weight:800;padding:6px 9px;border-radius:999px;background:#272f36}.badge.ok{background:#143822;color:#87f5ad}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.switch{display:flex;gap:8px;align-items:center;margin-top:12px}.switch input{width:20px;height:20px}.empty{margin-top:18px;padding:30px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px}.modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:18px}.modal.open{display:flex}.box{width:min(520px,100%);background:#111920;border:1px solid var(--line);border-radius:18px;padding:18px}.box h2{margin-top:0}.field{margin:12px 0}.field label{display:block;margin-bottom:6px;font-size:13px;color:var(--muted)}.field input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0b1116;color:#fff}.qr{text-align:center}.qr img{width:min(320px,80vw);background:#fff;padding:8px;border-radius:14px}.notice{margin-top:12px;color:var(--muted);font-size:13px}.statusbar{display:flex;gap:8px;align-items:center;margin-top:18px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><h1>WhatsApp — Agentes de IA Clientes</h1><p>Painel piloto para cadastrar, conectar e controlar cada cliente.</p></div>
+    <button class="btn primary" onclick="openNew()">+ Novo cliente</button>
+  </div>
+  <div class="statusbar"><span id="health">Verificando conexão…</span></div>
+  <div id="clients" class="grid"></div>
+</div>
+
+<div id="newModal" class="modal">
+  <div class="box">
+    <h2>Novo cliente</h2>
+    <div class="field"><label>Nome do responsável</label><input id="name" placeholder="Ex.: João"></div>
+    <div class="field"><label>Nome da empresa</label><input id="businessName" placeholder="Ex.: Pizzaria do João"></div>
+    <div class="field"><label>WhatsApp</label><input id="phone" placeholder="Ex.: 21999999999"></div>
+    <div class="actions"><button class="btn primary" onclick="createClient()">Criar cliente</button><button class="btn secondary" onclick="closeNew()">Cancelar</button></div>
+    <div id="newMsg" class="notice"></div>
+  </div>
+</div>
+
+<div id="qrModal" class="modal">
+  <div class="box qr">
+    <h2>Conectar WhatsApp</h2>
+    <p class="muted">No telefone do cliente: WhatsApp ou WhatsApp Business → Dispositivos conectados → Conectar dispositivo.</p>
+    <div id="qrArea">Gerando QR Code…</div>
+    <div class="actions" style="justify-content:center"><button class="btn secondary" onclick="closeQr()">Fechar</button></div>
+  </div>
+</div>
+
+<script>
+const el=id=>document.getElementById(id);
+async function api(url,opts={}){const r=await fetch(url,{headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Erro na operação');return d}
+async function health(){try{const h=await api('/api/health');el('health').textContent=h.wuzapiConfigured?'Ponte WhatsApp pronta para testes':'Painel online, mas falta ligar o token do WuzAPI';}catch{el('health').textContent='Não foi possível verificar o servidor';}}
+async function load(){const box=el('clients');try{const list=await api('/api/clients');if(!list.length){box.innerHTML='<div class="empty">Nenhum cliente ainda. Toque em “Novo cliente” para cadastrar o primeiro.</div>';return}box.innerHTML=list.map(c=>`
+<div class="card">
+  <div class="row"><div><div class="name">${esc(c.businessName||c.name)}</div><div class="muted">${esc(c.name)} · ${esc(c.phone)}</div></div><span class="badge ${c.loggedIn?'ok':''}">${c.loggedIn?'WhatsApp conectado':'Desconectado'}</span></div>
+  <div class="switch"><input type="checkbox" ${c.aiEnabled?'checked':''} onchange="controls('${c.id}','aiEnabled',this.checked)"><span>Agente de IA ligado</span></div>
+  <div class="switch"><input type="checkbox" ${c.manualMode?'checked':''} onchange="controls('${c.id}','manualMode',this.checked)"><span>Atendimento manual</span></div>
+  <div class="actions">
+    <button class="btn primary" onclick="connectClient('${c.id}')">${c.loggedIn?'Ver status':'Conectar WhatsApp'}</button>
+    <button class="btn secondary" onclick="refreshStatus('${c.id}')">Atualizar</button>
+    ${c.connected?'<button class="btn danger" onclick="disconnectClient(\''+c.id+'\')">Desconectar</button>':''}
+  </div>
+</div>`).join('')}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function openNew(){el('newModal').classList.add('open')} function closeNew(){el('newModal').classList.remove('open')}
+async function createClient(){el('newMsg').textContent='Criando…';try{await api('/api/clients',{method:'POST',body:JSON.stringify({name:el('name').value,businessName:el('businessName').value,phone:el('phone').value})});closeNew();el('name').value=el('businessName').value=el('phone').value='';await load()}catch(e){el('newMsg').textContent=e.message}}
+async function controls(id,key,value){await api('/api/clients/'+id+'/controls',{method:'PATCH',body:JSON.stringify({[key]:value})});await load()}
+async function connectClient(id){try{await api('/api/clients/'+id+'/connect',{method:'POST',body:'{}'});el('qrModal').classList.add('open');el('qrArea').textContent='Gerando QR Code…';setTimeout(()=>showQr(id),900)}catch(e){alert(e.message)}}
+async function showQr(id){try{const q=await api('/api/clients/'+id+'/qr');el('qrArea').innerHTML=q.qr?'<img src="'+q.qr+'" alt="QR Code"><p class="notice">Leia este código com o celular do cliente.</p>':'<p>QR ainda não disponível. Tente novamente em alguns segundos.</p>';}catch(e){el('qrArea').textContent=e.message}}
+function closeQr(){el('qrModal').classList.remove('open');load()}
+async function refreshStatus(id){try{const s=await api('/api/clients/'+id+'/status');if(s.loggedIn)alert('WhatsApp conectado com sucesso.');else alert('Ainda aguardando a leitura do QR Code.');await load()}catch(e){alert(e.message)}}
+async function disconnectClient(id){if(!confirm('Desconectar esta sessão do WhatsApp?'))return;try{await api('/api/clients/'+id+'/disconnect',{method:'POST',body:'{}'});await load()}catch(e){alert(e.message)}}
+health();load();setInterval(load,15000);
+</script>
+</body>
+</html>
