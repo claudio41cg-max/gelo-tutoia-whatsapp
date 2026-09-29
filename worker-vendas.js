@@ -71,7 +71,8 @@ function normalizarEventoWuzapi(body={}){
   const texto=textoMensagemWuzapi(m);
   const audio=Boolean(m?.audioMessage||m?.AudioMessage||m?.audio||m?.Audio);
   const base64=String(primeiroValor(p?.base64,p?.Base64,body?.base64,body?.Base64)||"");
-  return{wuzapi:true,ignorar:isGroup||isBroadcast,tipo:"Message",deMim,remetente,id,nome,texto,audio,base64,chat,isGroup,isBroadcast,raw:p};
+  const selfChat=deMim&&chat&&sender&&chat===sender&&!isGroup&&!isBroadcast;
+  return{wuzapi:true,ignorar:isGroup||isBroadcast,tipo:"Message",deMim,selfChat,remetente,id,nome,texto,audio,base64,chat,isGroup,isBroadcast,raw:p};
 }
 function base64ParaArrayBuffer(v=""){
   const s=String(v).replace(/^data:[^;]+;base64,/i,"").replace(/\s+/g,"");
@@ -90,9 +91,9 @@ if(request.method==="GET"){const mode=url.searchParams.get("hub.mode"),token=url
 if(request.method==="POST"){try{const raw=await request.text();const body=JSON.parse(raw);
 const wz=normalizarEventoWuzapi(body);
 if(wz?.wuzapi){
-  if(wz.ignorar||wz.deMim)return new Response("EVENT_RECEIVED",{status:200});
+  if(wz.ignorar||(wz.deMim&&!wz.selfChat))return new Response("EVENT_RECEIVED",{status:200});
   const remetente=wz.remetente||"desconhecido";
-  if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
+  if(!wz.selfChat&&!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
   const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:new Date().toISOString()};
   await salvar(env,key,resumo);
   if(wz.texto){try{await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}
