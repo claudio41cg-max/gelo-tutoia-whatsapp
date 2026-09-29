@@ -199,7 +199,7 @@
       </select>
       <label>Quantidade</label><input id="gt-ed-qtd" class="inp" type="number" min="1" value="${Number(v.qtd)||1}">
       <label>Valor total</label><input id="gt-ed-val" class="inp" type="number" step="0.01" value="${Number(v.valor)||0}">
-      <label>Pagamento</label><select id="gt-ed-pag" class="inp"><option ${v.pag==='Dinheiro'?'selected':''}>Dinheiro</option><option ${v.pag==='PIX'?'selected':''}>PIX</option><option ${v.pag==='Fiado'?'selected':''}>Fiado</option></select>
+      <label>Pagamento</label><select id="gt-ed-pag" class="inp"><option ${v.pag==='Não informado'?'selected':''}>Não informado</option><option ${v.pag==='Dinheiro'?'selected':''}>Dinheiro</option><option ${v.pag==='PIX'?'selected':''}>PIX</option><option ${v.pag==='Fiado'?'selected':''}>Fiado</option></select>
       <button class="btn-confirm" onclick="salvarCorrecaoVenda('${escHtml(nome)}','${data}',${idx})">SALVAR CORREÇÃO</button>
       <button class="act-btn btn-reset" onclick="excluirVendaCliente('${escHtml(nome)}','${data}',${idx})">🗑 EXCLUIR ESTA VENDA</button>
       <button class="act-btn btn-back" onclick="telaHistoricoCliente('${escHtml(nome)}')">‹ Voltar</button>`);
