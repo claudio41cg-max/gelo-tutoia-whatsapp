@@ -12,6 +12,10 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const WUZAPI_URL = (process.env.WUZAPI_URL || "https://wuzapi-test-production.up.railway.app").replace(/\/$/, "");
 const ADMIN_TOKEN = process.env.WUZAPI_ADMIN_TOKEN || "";
+const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
+const SEED_CLIENT_BUSINESS_NAME = String(process.env.SEED_CLIENT_BUSINESS_NAME || "").trim();
+const SEED_CLIENT_PHONE = String(process.env.SEED_CLIENT_PHONE || "").trim();
+const SEED_CLIENT_TOKEN = String(process.env.SEED_CLIENT_TOKEN || "").trim();
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -59,6 +63,48 @@ function adminHeaders(json = false) {
   const h = { Authorization: ADMIN_TOKEN };
   if (json) h["Content-Type"] = "application/json";
   return h;
+}
+
+async function ensureSeedClient() {
+  if (!ADMIN_TOKEN || !SEED_CLIENT_PHONE || !SEED_CLIENT_TOKEN) return;
+  const clients = readClients();
+  if (clients.some(c => String(c.phone || "") === SEED_CLIENT_PHONE)) return;
+
+  const name = SEED_CLIENT_NAME || "Cliente teste";
+  const businessName = SEED_CLIENT_BUSINESS_NAME || name;
+  let wuzapiUserId = null;
+
+  try {
+    const created = await wuz("/admin/users", {
+      method: "POST",
+      headers: adminHeaders(true),
+      body: JSON.stringify({ name: businessName.slice(0, 80), token: SEED_CLIENT_TOKEN, webhook: "", events: "Message" })
+    });
+    wuzapiUserId = created?.id || created?.data?.id || null;
+  } catch (e) {
+    const msg = String(e?.message || "").toLowerCase();
+    const duplicate = e?.status === 409 || msg.includes("exist") || msg.includes("duplicate") || msg.includes("token");
+    if (!duplicate) {
+      console.error("Falha ao preparar cliente de teste no WuzAPI:", e?.message || e);
+      return;
+    }
+  }
+
+  clients.push({
+    id: crypto.randomUUID(),
+    name,
+    phone: SEED_CLIENT_PHONE,
+    businessName,
+    aiEnabled: false,
+    manualMode: false,
+    connected: false,
+    loggedIn: false,
+    token: SEED_CLIENT_TOKEN,
+    wuzapiUserId,
+    createdAt: new Date().toISOString()
+  });
+  writeClients(clients);
+  console.log("Cliente de teste preparado:", businessName, SEED_CLIENT_PHONE);
 }
 
 app.get("/api/health", (req, res) => {
@@ -190,6 +236,12 @@ app.post("/api/clients/:id/disconnect", async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
-});
+async function start() {
+  try { await ensureSeedClient(); }
+  catch (e) { console.error("Falha ao preparar cliente inicial:", e?.message || e); }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
+  });
+}
+
+start();
