@@ -33,6 +33,7 @@
     const vs=S?.vpc?.[nome]||[];
     const pags=[...new Set(vs.filter(v=>v.tipo!=='obs').map(v=>v.pag||'Dinheiro'))];
     if(!pags.length)return '';
+    if(pags.some(p=>!['PIX','Fiado','Dinheiro'].includes(p)))return 'REVISAR';
     if(pags.length>1)return 'MISTO';
     const p=pags[0];
     return p==='PIX'?'PIX':p==='Fiado'?'FIADO':'DINHEIRO';
