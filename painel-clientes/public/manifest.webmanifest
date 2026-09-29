@@ -1,0 +1,21 @@
+{
+  "name": "Agentes IA para WhatsApp",
+  "short_name": "Agentes IA",
+  "description": "Painel para cadastrar, conectar e controlar agentes de IA no WhatsApp.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#07100c",
+  "theme_color": "#0d1713",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
