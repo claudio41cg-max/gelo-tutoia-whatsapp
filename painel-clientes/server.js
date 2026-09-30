@@ -18,6 +18,7 @@ const SEED_CLIENT_PHONE = String(process.env.SEED_CLIENT_PHONE || "").trim();
 const SEED_CLIENT_TOKEN = String(process.env.SEED_CLIENT_TOKEN || "").trim();
 const LEGACY_SEED_PHONE = "5521991777811";
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/$/, "");
+const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/agent/reply");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -99,6 +100,19 @@ async function configureClientWebhook(c) {
   });
   c.webhookURL = webhookURL;
   return true;
+}
+
+async function gerarRespostaIA(mensagem) {
+  const res = await fetch(AI_AGENT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mensagem })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok || !data?.resposta) {
+    throw new Error(data?.erro || ("IA HTTP " + res.status));
+  }
+  return String(data.resposta).trim();
 }
 
 async function configureAllClientWebhooks() {
@@ -295,7 +309,7 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     .replace(/\D/g, "");
 
   if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
-    const body = "Boa noite! Este é um atendimento automático em teste. Como posso ajudar?";
+    const body = await gerarRespostaIA(String(text || "").trim());
     try {
       const sent = await wuz("/chat/send/text", {
         method: "POST",
