@@ -106,20 +106,21 @@ async function findExistingBusinessUser() {
 }
 
 async function configureExistingBusinessWebhook() {
-  if (!PUBLIC_BASE_URL) return false;
   const business = await findExistingBusinessUser();
   const token = String(business?.token || business?.Token || "").trim();
   if (!business || !token) {
-    console.log("WhatsApp Business encontrado, mas sem token disponível para integração do agente.");
+    console.log("WhatsApp Business encontrado, mas sem token disponível para integração.");
     return false;
   }
-  const webhookURL = PUBLIC_BASE_URL + "/api/webhooks/wuzapi/external-gelo-tutoia";
+  // O Gelo Tutóia deve receber primeiro no Worker principal.
+  // O Worker repassa uma cópia ao painel, evitando que um projeto derrube o outro.
+  const webhookURL = "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev";
   await wuz("/webhook", {
     method: "POST",
     headers: userHeaders(token, true),
     body: JSON.stringify({ webhookURL, events: ["Message"] })
   });
-  console.log("Webhook do WhatsApp Business ligado ao agente do painel.");
+  console.log("Webhook do Gelo Tutóia apontado para o Worker principal; painel recebe por repasse.");
   return true;
 }
 function userHeaders(token, json = false) {
@@ -382,16 +383,6 @@ app.get("/api/clients/:id/status", async (req, res) => {
 app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
   try {
     const payload = req.body || {};
-
-    try {
-      await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    } catch (e) {
-      console.error("Falha ao encaminhar evento TIM para o fluxo antigo:", e?.message || e);
-    }
 
     const business = await findExistingBusinessUser();
     const token = String(business?.token || business?.Token || "").trim();
