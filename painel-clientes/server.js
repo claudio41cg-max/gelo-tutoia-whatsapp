@@ -89,6 +89,39 @@ async function wuz(pathname, options = {}) {
   }
   return data;
 }
+
+async function findExistingBusinessUser() {
+  if (!ADMIN_TOKEN) return null;
+  const usersResponse = await wuz("/admin/users", { headers: adminHeaders() });
+  const users =
+    Array.isArray(usersResponse) ? usersResponse :
+    Array.isArray(usersResponse?.data) ? usersResponse.data :
+    Array.isArray(usersResponse?.users) ? usersResponse.users :
+    Array.isArray(usersResponse?.data?.users) ? usersResponse.data.users :
+    [];
+  return users.find(u => {
+    const name = String(u?.name || u?.Name || u?.instanceName || "").trim().toLowerCase();
+    return name === "gelo-tutoia" || name === "gelo tutoia";
+  }) || null;
+}
+
+async function configureExistingBusinessWebhook() {
+  if (!PUBLIC_BASE_URL) return false;
+  const business = await findExistingBusinessUser();
+  const token = String(business?.token || business?.Token || "").trim();
+  if (!business || !token) {
+    console.log("WhatsApp Business encontrado, mas sem token disponível para integração do agente.");
+    return false;
+  }
+  const webhookURL = PUBLIC_BASE_URL + "/api/webhooks/wuzapi/external-gelo-tutoia";
+  await wuz("/webhook", {
+    method: "POST",
+    headers: userHeaders(token, true),
+    body: JSON.stringify({ webhookURL, events: ["Message"] })
+  });
+  console.log("Webhook do WhatsApp Business ligado ao agente do painel.");
+  return true;
+}
 function userHeaders(token, json = false) {
   const h = { Token: token, Authorization: token };
   if (json) h["Content-Type"] = "application/json";
@@ -346,6 +379,84 @@ app.get("/api/clients/:id/status", async (req, res) => {
   }
 });
 
+app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    try {
+      await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Falha ao encaminhar evento TIM para o fluxo antigo:", e?.message || e);
+    }
+
+    const business = await findExistingBusinessUser();
+    const token = String(business?.token || business?.Token || "").trim();
+    if (!business || !token) {
+      console.error("WhatsApp Business sem token disponível para responder.");
+      return res.json({ ok: true, autoReply: false, missingToken: true });
+    }
+
+    let event = payload;
+    if (typeof payload.jsonData === "string") {
+      try { event = JSON.parse(payload.jsonData); } catch {}
+    }
+
+    const info = event?.event?.Info || event?.Info || {};
+    const msg = event?.event?.Message || event?.Message || {};
+    const text =
+      msg?.conversation ||
+      msg?.extendedTextMessage?.text ||
+      msg?.imageMessage?.caption ||
+      msg?.videoMessage?.caption ||
+      "";
+
+    const isIncoming = info?.IsFromMe === false;
+    const isPrivateChat = info?.IsGroup === false;
+    const senderPhone = String(info?.SenderAlt || "")
+      .replace("@s.whatsapp.net", "")
+      .replace(/\D/g, "");
+
+    console.log("Webhook recebido: Gelo Tutóia (TIM)", senderPhone || info?.Sender || "", String(text || "").slice(0, 160));
+
+    const state = readExternalState();
+    if (state.aiEnabled && !state.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
+      let body = "";
+      try {
+        body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
+      } catch (e) {
+        console.error("Falha ao gerar resposta IA no TIM:", e?.message || e);
+        return res.json({ ok: true, autoReply: false, aiError: e?.message || "Falha na IA" });
+      }
+
+      try {
+        const sent = await wuz("/chat/send/text", {
+          method: "POST",
+          headers: userHeaders(token, true),
+          body: JSON.stringify({
+            Phone: senderPhone,
+            Body: body,
+            Id: crypto.randomBytes(16).toString("hex").toUpperCase()
+          })
+        });
+        console.log("Resposta automática enviada: Gelo Tutóia (TIM)", senderPhone);
+        return res.json({ ok: true, autoReply: true, sent });
+      } catch (e) {
+        console.error("Falha ao enviar resposta automática no TIM:", e?.message || e);
+        return res.status(500).json({ ok: false, error: e?.message || "Falha ao responder" });
+      }
+    }
+
+    return res.json({ ok: true, aiEnabled: state.aiEnabled, manualMode: state.manualMode, autoReply: false });
+  } catch (e) {
+    console.error("Falha no webhook do WhatsApp Business TIM:", e?.message || e);
+    return res.status(500).json({ ok: false, error: e?.message || "Falha no webhook TIM" });
+  }
+});
+
 app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
   const clients = readClients();
   const key = String(req.params.id || "");
@@ -389,7 +500,8 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     .replace("@s.whatsapp.net", "")
     .replace(/\D/g, "");
 
-  if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
+  const isManagedBusinessSender = senderPhone === "5521981378219";
+  if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && !isManagedBusinessSender && senderPhone && String(text || "").trim()) {
     let body = "";
     try {
       body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
@@ -456,6 +568,8 @@ async function start() {
   catch (e) { console.error("Falha ao preparar cliente inicial:", e?.message || e); }
   try { await configureAllClientWebhooks(); }
   catch (e) { console.error("Falha ao configurar webhooks:", e?.message || e); }
+  try { await configureExistingBusinessWebhook(); }
+  catch (e) { console.error("Falha ao ligar webhook do WhatsApp Business:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
   });
