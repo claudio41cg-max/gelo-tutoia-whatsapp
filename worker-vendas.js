@@ -93,7 +93,7 @@ if(request.method==="POST"&&url.pathname==="/api/agent/reply"){
     const mensagem=String(b?.mensagem||"").trim();
     if(!mensagem)return json({ok:false,erro:"Mensagem vazia"},{status:400});
     const systemPrompt=`Você é um atendente de WhatsApp da Gelo Tutóia em fase de teste. Responda sempre em português do Brasil, de forma natural, curta e útil, como uma pessoa atendendo pelo WhatsApp. Não diga que é ChatGPT. Informações conhecidas: gelo em escamas custa R$ 7,00 por saco na regra geral; gelo filtrado custa R$ 13,00 por saco na regra geral. Se a pergunta exigir informação que não foi fornecida, como estoque exato, horário especial, endereço detalhado ou prazo específico, diga claramente que precisa confirmar em vez de inventar. Não ofereça descontos nem invente preços. Se o cliente apenas cumprimentar, cumprimente e pergunte como pode ajudar.`;
-    const r=await env.AI.run("@cf/meta/llama-3.1-8b-instruct",{
+    const r=await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8",{
       messages:[
         {role:"system",content:systemPrompt},
         {role:"user",content:mensagem}
