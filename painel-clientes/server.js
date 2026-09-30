@@ -261,7 +261,7 @@ app.get("/api/clients/:id/status", async (req, res) => {
   }
 });
 
-app.post("/api/webhooks/wuzapi/:id", (req, res) => {
+app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
   const clients = readClients();
   const c = clients.find(x => x.id === req.params.id);
   if (!c) return res.status(404).json({ error: "Cliente não encontrado." });
@@ -287,7 +287,34 @@ app.post("/api/webhooks/wuzapi/:id", (req, res) => {
   writeClients(clients);
 
   console.log("Webhook recebido:", c.businessName || c.name, c.lastMessageFrom, c.lastMessagePreview);
-  res.json({ ok: true, aiEnabled: !!c.aiEnabled, manualMode: !!c.manualMode });
+
+  const isIncoming = info?.IsFromMe === false;
+  const isPrivateChat = info?.IsGroup === false;
+  const senderPhone = String(info?.SenderAlt || "")
+    .replace("@s.whatsapp.net", "")
+    .replace(/\D/g, "");
+
+  if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
+    const body = "Boa noite! Este é um atendimento automático em teste. Como posso ajudar?";
+    try {
+      const sent = await wuz("/chat/send/text", {
+        method: "POST",
+        headers: userHeaders(c.token, true),
+        body: JSON.stringify({
+          Phone: senderPhone,
+          Body: body,
+          Id: crypto.randomBytes(16).toString("hex").toUpperCase()
+        })
+      });
+      console.log("Resposta automática enviada:", c.businessName || c.name, senderPhone);
+      return res.json({ ok: true, autoReply: true, sent });
+    } catch (e) {
+      console.error("Falha ao enviar resposta automática:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e?.message || "Falha ao responder" });
+    }
+  }
+
+  res.json({ ok: true, aiEnabled: !!c.aiEnabled, manualMode: !!c.manualMode, autoReply: false });
 });
 
 app.patch("/api/clients/:id/controls", (req, res) => {
