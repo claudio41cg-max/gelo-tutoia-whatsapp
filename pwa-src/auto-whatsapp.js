@@ -66,7 +66,12 @@
   }
   function limparFalsosPositivosLocais(){
     const antes=vendasRecebidas.length;
-    vendasRecebidas=vendasRecebidas.filter(v=>v.status!=='Pendente'||vendaLocalValida(v));
+    // Não reatribuir vendasRecebidas: na base do app ela pode ser const.
+    // Remove apenas os falsos positivos, preservando a referência usada pelas telas.
+    for(let i=vendasRecebidas.length-1;i>=0;i--){
+      const v=vendasRecebidas[i];
+      if(v?.status==='Pendente'&&!vendaLocalValida(v))vendasRecebidas.splice(i,1);
+    }
     if(vendasRecebidas.length!==antes)salvarInbox();
   }
   function integrar(){
@@ -87,7 +92,8 @@
       // Durante os testes, toda venda reconhecível entra direto no movimento do dia.
       // Itens duvidosos permanecem marcados para conferência/correção no relatório.
       salvarEstado();salvarDiaNoHistorico();salvarInbox();updHdr();
-      if(!S2().classList.contains('ativa'))telaClientes(true);
+      // Atualiza imediatamente a tela principal para a venda aparecer na frente do app.
+      try{telaClientes(true)}catch(e){console.log('Gelo Tutóia - falha ao atualizar tela principal:',e)}
       if(total)toast(`✓ ${total} venda${total>1?'s':''} do WhatsApp lançada${total>1?'s':''} automaticamente${revisar?' · '+revisar+' para revisar':''}`);
     }
     return total;
