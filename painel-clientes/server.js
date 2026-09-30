@@ -57,7 +57,8 @@ function publicClient(c) {
     createdAt: c.createdAt,
     connected: c.connected ?? false,
     loggedIn: c.loggedIn ?? false,
-    wuzapiUserId: c.wuzapiUserId || null
+    wuzapiUserId: c.wuzapiUserId || null,
+    externalManaged: !!c.externalManaged
   };
 }
 async function wuz(pathname, options = {}) {
@@ -189,7 +190,61 @@ app.get("/api/clients", async (req, res) => {
     refreshed.push(c);
   }
   writeClients(refreshed);
-  res.json(refreshed.map(publicClient));
+  const result = refreshed.map(publicClient);
+
+  try {
+    if (ADMIN_TOKEN) {
+      const usersResponse = await wuz("/admin/users", { headers: adminHeaders() });
+      const users =
+        Array.isArray(usersResponse) ? usersResponse :
+        Array.isArray(usersResponse?.data) ? usersResponse.data :
+        Array.isArray(usersResponse?.users) ? usersResponse.users :
+        Array.isArray(usersResponse?.data?.users) ? usersResponse.data.users :
+        [];
+
+      const business = users.find(u => {
+        const name = String(u?.name || u?.Name || u?.instanceName || "").trim().toLowerCase();
+        return name === "gelo-tutoia" || name === "gelo tutoia";
+      });
+
+      if (business) {
+        const jid = String(business?.jid || business?.Jid || "");
+        const phone = jid.replace(/@.*/, "").replace(/\D/g, "");
+        const connected = !!(
+          business?.connected ??
+          business?.Connected ??
+          business?.loggedIn ??
+          business?.LoggedIn ??
+          jid
+        );
+
+        const alreadyListed = result.some(c =>
+          (phone && String(c.phone || "").replace(/\D/g, "") === phone) ||
+          String(c.businessName || "").toLowerCase().includes("gelo tutóia (tim)")
+        );
+
+        if (!alreadyListed) {
+          result.unshift({
+            id: "external-gelo-tutoia",
+            name: "WhatsApp Business",
+            phone: phone || "Conectado",
+            businessName: "Gelo Tutóia (TIM)",
+            aiEnabled: true,
+            manualMode: false,
+            createdAt: null,
+            connected,
+            loggedIn: connected,
+            wuzapiUserId: business?.id || business?.ID || null,
+            externalManaged: true
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Falha ao carregar WhatsApp Business existente:", e?.message || e);
+  }
+
+  res.json(result);
 });
 
 app.post("/api/clients", async (req, res) => {
