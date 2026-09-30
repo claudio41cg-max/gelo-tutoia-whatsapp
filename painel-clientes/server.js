@@ -167,8 +167,8 @@ app.get("/api/clients", async (req, res) => {
     try {
       if (c.token) {
         const s = await wuz("/session/status", { headers: userHeaders(c.token) });
-        c.connected = !!s?.data?.Connected;
-        c.loggedIn = !!s?.data?.LoggedIn;
+        c.connected = !!(s?.data?.connected ?? s?.data?.Connected);
+        c.loggedIn = !!(s?.data?.loggedIn ?? s?.data?.LoggedIn);
       }
     } catch {}
     refreshed.push(c);
@@ -252,8 +252,8 @@ app.get("/api/clients/:id/status", async (req, res) => {
     const c = clients.find(x => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: "Cliente não encontrado." });
     const out = await wuz("/session/status", { headers: userHeaders(c.token) });
-    c.connected = !!out?.data?.Connected;
-    c.loggedIn = !!out?.data?.LoggedIn;
+    c.connected = !!(out?.data?.connected ?? out?.data?.Connected);
+    c.loggedIn = !!(out?.data?.loggedIn ?? out?.data?.LoggedIn);
     writeClients(clients);
     res.json({ connected: c.connected, loggedIn: c.loggedIn, raw: out });
   } catch (e) {
