@@ -1,4 +1,4 @@
-import { interpretarVenda } from "./parser.js";
+import { interpretarVenda, interpretarVendas } from "./parser.js";
 const VERIFY_TOKEN="gelo-tutoia-2026",GRAPH_VERSION="v26.0",TRANSCRIBE_MODEL="@cf/openai/whisper-large-v3-turbo",CONFIG_KEY="config:clientes";
 function corsHeaders(){return{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type","Cache-Control":"no-store"}}
 function json(data,init={}){return new Response(JSON.stringify(data),{...init,headers:{"Content-Type":"application/json; charset=utf-8",...corsHeaders(),...(init.headers||{})}})}
@@ -23,8 +23,29 @@ function arrayBufferToBase64(a){const b=new Uint8Array(a);let s="";for(let i=0;i
 async function transcreverAudio(env,a){if(!env.AI)throw new Error("binding AI não disponível");const r=await env.AI.run(TRANSCRIBE_MODEL,{audio:arrayBufferToBase64(a),task:"transcribe",language:"pt",vad_filter:true,initial_prompt:"Vendas de gelo Gelo Tutóia. Preserve nomes e apelidos dos clientes, quantidades, PIX, dinheiro, fiado, escamas e filtrado."});return String(r?.text||"").trim()}
 function chaveMensagem(id){return`mensagem:${id||`sem-id-${Date.now()}`}`}
 async function salvar(env,key,dados){if(!env.VENDAS||!key)return;const atual=await env.VENDAS.get(key,{type:"json"})||{};await env.VENDAS.put(key,JSON.stringify({...atual,...dados,atualizado_em:new Date().toISOString()}))}
-async function interpretar(env,key,texto,remetente,origem="meta"){const venda=interpretarVenda(texto,await getConfig(env));const auto_elegivel=autoConfigurado(env,origem)&&remetenteAutorizado(env,remetente)&&!venda.precisa_revisao&&venda.total_sacos>0;await salvar(env,key,{status:"venda_interpretada",venda,auto_elegivel,origem,interpretado_em:new Date().toISOString()});console.log("Gelo Tutóia - venda interpretada:",JSON.stringify(venda))}
-function itensVendaDoRegistro(key,reg){const v=reg?.venda;if(!v||!v.cliente)return[];const st=reg.status_itens||{},base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:reg.auto_elegivel===true},out=[];for(const[tipo,q,suf]of[["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){const id=`${key}:${suf}`;if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo})}return out}
+async function interpretar(env,key,texto,remetente,origem="meta"){
+  const config=await getConfig(env);
+  const vendas=interpretarVendas(texto,config).filter(v=>v&&v.cliente&&v.total_sacos>0);
+  const permitido=autoConfigurado(env,origem)&&remetenteAutorizado(env,remetente);
+  const preparadas=vendas.map(v=>({...v,auto_elegivel:permitido&&!v.precisa_revisao&&v.total_sacos>0}));
+  const venda=preparadas[0]||interpretarVenda(texto,config);
+  const auto_elegivel=preparadas.length===1?preparadas[0].auto_elegivel:false;
+  await salvar(env,key,{status:"venda_interpretada",venda,vendas:preparadas,auto_elegivel,origem,interpretado_em:new Date().toISOString()});
+  console.log("Gelo Tutóia - vendas interpretadas:",JSON.stringify(preparadas));
+}
+function itensVendaDoRegistro(key,reg){
+  const lista=Array.isArray(reg?.vendas)&&reg.vendas.length?reg.vendas:(reg?.venda?[reg.venda]:[]);
+  const st=reg.status_itens||{},out=[];
+  lista.forEach((v,idx)=>{
+    if(!v?.cliente)return;
+    const base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:v.auto_elegivel===true||(lista.length===1&&reg.auto_elegivel===true)};
+    for(const [tipo,q,suf] of [["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){
+      const id=lista.length===1?(key+":"+suf):(key+":v"+idx+":"+suf);
+      if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo});
+    }
+  });
+  return out;
+}
 async function listarInbox(env){if(!env.VENDAS)return[];const out=[];let cursor;do{const p=await env.VENDAS.list({prefix:"mensagem:",cursor,limit:100});for(const k of p.keys){const r=await env.VENDAS.get(k.name,{type:"json"});if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r))}cursor=p.list_complete?undefined:p.cursor}while(cursor);return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)))}
 
 function jidTexto(v){
@@ -71,7 +92,8 @@ function normalizarEventoWuzapi(body={}){
   const texto=textoMensagemWuzapi(m);
   const audio=Boolean(m?.audioMessage||m?.AudioMessage||m?.audio||m?.Audio);
   const base64=String(primeiroValor(p?.base64,p?.Base64,body?.base64,body?.Base64)||"");
-  return{wuzapi:true,ignorar:isGroup||isBroadcast,tipo:"Message",deMim,remetente,id,nome,texto,audio,base64,chat,isGroup,isBroadcast,raw:p};
+  const selfChat=deMim&&chat&&sender&&chat===sender&&!isGroup&&!isBroadcast;
+  return{wuzapi:true,ignorar:isGroup||isBroadcast,tipo:"Message",deMim,selfChat,remetente,id,nome,texto,audio,base64,chat,isGroup,isBroadcast,raw:p};
 }
 function base64ParaArrayBuffer(v=""){
   const s=String(v).replace(/^data:[^;]+;base64,/i,"").replace(/\s+/g,"");
@@ -85,14 +107,96 @@ if(request.method==="GET"&&url.pathname==="/api/clientes"){try{return json({ok:t
 if(request.method==="POST"&&url.pathname==="/api/clientes"){try{return json({ok:true,clientes:await putConfig(env,await request.json())})}catch(e){return json({ok:false,erro:String(e)},{status:400})}}
 if(request.method==="GET"&&url.pathname==="/api/inbox"){try{return json({ok:true,vendas:await listarInbox(env),atualizado_em:new Date().toISOString()})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="GET"&&url.pathname==="/api/auto-status")return json({ok:true,auto_configurado:autoConfigurado(env),assinatura_configurada:!!env.META_APP_SECRET,remetentes_configurados:!!String(env.AUTHORIZED_SENDERS||"").trim()});
+if(request.method==="POST"&&url.pathname==="/api/agent/reply"){
+  try{
+    if(!env.AI)return json({ok:false,erro:"IA indisponível"},{status:503});
+    const b=await request.json();
+    const mensagem=String(b?.mensagem||"").trim();
+    const telefone=somenteDigitos(b?.telefone||"");
+    if(!mensagem)return json({ok:false,erro:"Mensagem vazia"},{status:400});
+
+    const systemPrompt=`Você é o assistente virtual da empresa Gelo Tutóia, responsável pelo atendimento inicial no WhatsApp. Responda sempre em português do Brasil. Seu tom deve ser acolhedor, educado, receptivo, gentil e natural. Fale com calma, sem parecer apressado. Demonstre atenção ao cliente, use frases curtas e calorosas e conduza a conversa sem pressionar. Continue sendo objetivo, mas com um jeito humano e carinhoso de atender. Nunca diga que é ChatGPT e nunca invente informações.
+
+OBJETIVO:
+Atender clientes, tirar dúvidas, conduzir pedidos e coletar os dados necessários para entrega e orçamento.
+
+TIPOS DE CLIENTE:
+1. Cliente cadastrado: já possui vínculo com a Gelo Tutóia e pode ter preço próprio cadastrado. Nunca invente nem substitua o preço de cliente cadastrado.
+2. Cliente de rua: cliente sem cadastro/vínculo. Use os preços públicos abaixo.
+
+PREÇOS PARA CLIENTE DE RUA:
+- Gelo em escamas, saco de 20 kg: R$ 10,00.
+- Gelo filtrado, saco de 10 kg: R$ 10,00.
+- Gelo filtrado, saco de 5 kg: R$ 6,00.
+Para 10 sacos ou mais, não prometa desconto. Informe que pode haver condição especial e que o valor deve ser combinado com o proprietário.
+
+HORÁRIO E ÁREA DE ENTREGA:
+- Entregas normalmente das 08h às 12h.
+- Se o cliente precisar receber depois de 12h, responda: "Caso você precise receber o gelo após esse horário, que é meio-dia, tem que ser combinado diretamente com o proprietário para melhor atendê-lo."
+- A Gelo Tutóia é uma empresa local e trabalha com entregas em Santa Margarida, Cosmos, Inhoaíba, Vila Nova, Paciência, Palmares e arredores.
+- Se o cliente perguntar se fazemos entrega, responda de forma acolhedora: "Entregamos sim 😊 Trabalhamos com entregas em Santa Margarida, Cosmos, Inhoaíba, Vila Nova, Paciência, Palmares e arredores."
+- Se o bairro informado estiver fora dessa região ou houver dúvida se atendemos aquele endereço, não diga que não entregamos de imediato. Informe que precisa confirmar com o proprietário para ver se consegue atender.
+- Sempre pergunte bairro/endereço e horário desejado.
+
+PRODUTOS:
+- Gelo em escamas 20 kg.
+- Gelo filtrado 10 kg.
+- Gelo filtrado 5 kg.
+Não ofereça "gelo em cubo" nem outros produtos não cadastrados.
+
+FLUXO DE VENDA:
+- Entenda primeiro o tipo de gelo e a quantidade.
+- Para menos de 10 sacos, pode calcular o valor normalmente usando o preço correto do tipo escolhido.
+- Para 10 sacos ou mais, informe que o proprietário pode avaliar uma condição diferenciada.
+- Antes de encerrar o pedido, confirme obrigatoriamente: tipo de gelo, quantidade, valor quando aplicável, bairro/endereço, horário desejado e telefone para contato.
+- Se faltar algum desses dados, pergunte apenas o que está faltando.
+- Depois da confirmação, diga: "Pedido anotado. O proprietário entrará em contato para confirmar os detalhes da entrega."
+- Se o cliente informar quantidade, endereço ou telefone em mensagens separadas, aproveite essas informações; não pergunte de novo sem necessidade.
+- Se o cliente responder apenas "sim", "não", uma quantidade ou uma palavra curta, interprete com base na conversa anterior e continue de onde parou. Não reinicie o atendimento.
+- Se não souber algo, diga que precisa confirmar com o proprietário.
+- Seja breve. Evite textos longos e repetitivos.`;
+
+    const convKey=telefone?`agente:conversa:${telefone}`:"";
+    let historico=[];
+    if(env.VENDAS&&convKey){
+      historico=await env.VENDAS.get(convKey,{type:"json"})||[];
+      if(!Array.isArray(historico))historico=[];
+      historico=historico.slice(-10);
+    }
+
+    const messages=[
+      {role:"system",content:systemPrompt},
+      ...historico,
+      {role:"user",content:mensagem}
+    ];
+
+    const r=await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8",{
+      messages,
+      max_tokens:260,
+      temperature:0.35
+    });
+    const resposta=String(r?.response||r?.result?.response||"").trim();
+    if(!resposta)return json({ok:false,erro:"IA não retornou resposta"},{status:502});
+
+    if(env.VENDAS&&convKey){
+      const novo=[...historico,{role:"user",content:mensagem},{role:"assistant",content:resposta}].slice(-10);
+      await env.VENDAS.put(convKey,JSON.stringify(novo),{expirationTtl:86400});
+    }
+
+    return json({ok:true,resposta});
+  }catch(e){
+    console.log("Gelo Tutóia - erro agente IA:",String(e));
+    return json({ok:false,erro:String(e)},{status:500});
+  }
+}
 if(request.method==="POST"&&url.pathname==="/api/inbox/status"){try{const b=await request.json(),key=String(b?.remote_key||""),id=String(b?.remote_id||""),status=String(b?.status||"");if(!key.startsWith("mensagem:")||!id.startsWith(key+":"))return json({ok:false,erro:"Chave inválida"},{status:400});if(!["confirmada_app","ignorada_app"].includes(status))return json({ok:false,erro:"Status inválido"},{status:400});const reg=await env.VENDAS.get(key,{type:"json"})||{};await salvar(env,key,{status_itens:{...(reg.status_itens||{}),[id]:status},status_app_em:new Date().toISOString()});return json({ok:true})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="GET"){const mode=url.searchParams.get("hub.mode"),token=url.searchParams.get("hub.verify_token"),challenge=url.searchParams.get("hub.challenge");if(mode==="subscribe"&&token===VERIFY_TOKEN)return new Response(challenge,{status:200,headers:{"Content-Type":"text/plain"}});return new Response("Token de verificação inválido",{status:403})}
 if(request.method==="POST"){try{const raw=await request.text();const body=JSON.parse(raw);
 const wz=normalizarEventoWuzapi(body);
 if(wz?.wuzapi){
-  if(wz.ignorar||wz.deMim)return new Response("EVENT_RECEIVED",{status:200});
+  if(wz.ignorar||(wz.deMim&&!wz.selfChat))return new Response("EVENT_RECEIVED",{status:200});
   const remetente=wz.remetente||"desconhecido";
-  if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
+  if(!wz.selfChat&&!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
   const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:new Date().toISOString()};
   await salvar(env,key,resumo);
   if(wz.texto){try{await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}
@@ -111,5 +215,41 @@ if(wz?.wuzapi){
   return new Response("EVENT_RECEIVED",{status:200});
 }
 if(!await assinaturaValida(request,raw,env.META_APP_SECRET))return new Response("Assinatura inválida",{status:403});
-const value=body?.entry?.[0]?.changes?.[0]?.value,message=value?.messages?.[0],contact=value?.contacts?.[0];if(!message)return new Response("EVENT_RECEIVED",{status:200});const remetente=message.from||contact?.wa_id||"desconhecido";if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});const key=chaveMensagem(message.id),resumo={tipo:message.type||"desconhecido",remetente,nome:contact?.profile?.name||"",mensagem_id:message.id||"",texto:message.text?.body||"",audio_id:message.audio?.id||"",audio_mime_type:message.audio?.mime_type||"",audio_voz:message.audio?.voice===true,status:"pendente",recebido_em:new Date().toISOString()};await salvar(env,key,resumo);if(message.type==="text"&&resumo.texto){try{await interpretar(env,key,resumo.texto,remetente)}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}if(message.type==="audio"&&message.audio?.id){if(!env.META_ACCESS_TOKEN)await salvar(env,key,{status:"aguardando_token_meta"});else try{const media=await getWhatsAppMediaInfo(message.audio.id,env.META_ACCESS_TOKEN);if(media.url){const audio=await downloadWhatsAppMedia(media.url,env.META_ACCESS_TOKEN);await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength});try{const texto=await transcreverAudio(env,audio);await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});await interpretar(env,key,texto,remetente)}catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}}}catch(e){await salvar(env,key,{status:"erro_audio_meta",erro_audio:String(e)})}}return new Response("EVENT_RECEIVED",{status:200})}catch(e){console.log("Gelo Tutóia - erro no webhook:",String(e));return new Response("EVENT_RECEIVED",{status:200})}}
+let processadas=0;
+for(const entry of Array.isArray(body?.entry)?body.entry:[]){
+  for(const change of Array.isArray(entry?.changes)?entry.changes:[]){
+    const value=change?.value||{};
+    const contacts=Array.isArray(value?.contacts)?value.contacts:[];
+    const messages=Array.isArray(value?.messages)?value.messages:[];
+    for(const message of messages){
+      const contact=contacts.find(c=>c?.wa_id===message?.from)||contacts[0]||{};
+      const remetente=message?.from||contact?.wa_id||"desconhecido";
+      if(!remetenteAutorizado(env,remetente))continue;
+      const key=chaveMensagem(message?.id);
+      const resumo={tipo:message?.type||"desconhecido",remetente,nome:contact?.profile?.name||"",mensagem_id:message?.id||"",texto:message?.text?.body||"",audio_id:message?.audio?.id||"",audio_mime_type:message?.audio?.mime_type||"",audio_voz:message?.audio?.voice===true,status:"pendente",recebido_em:new Date().toISOString()};
+      await salvar(env,key,resumo);
+      if(message?.type==="text"&&resumo.texto){
+        try{await interpretar(env,key,resumo.texto,remetente)}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}
+      }
+      if(message?.type==="audio"&&message?.audio?.id){
+        if(!env.META_ACCESS_TOKEN)await salvar(env,key,{status:"aguardando_token_meta"});
+        else try{
+          const media=await getWhatsAppMediaInfo(message.audio.id,env.META_ACCESS_TOKEN);
+          if(media.url){
+            const audio=await downloadWhatsAppMedia(media.url,env.META_ACCESS_TOKEN);
+            await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength});
+            try{
+              const texto=await transcreverAudio(env,audio);
+              await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});
+              await interpretar(env,key,texto,remetente);
+            }catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}
+          }
+        }catch(e){await salvar(env,key,{status:"erro_audio_meta",erro_audio:String(e)})}
+      }
+      processadas++;
+    }
+  }
+}
+console.log("Gelo Tutóia - mensagens Meta processadas no lote:",processadas);
+return new Response("EVENT_RECEIVED",{status:200})}catch(e){console.log("Gelo Tutóia - erro no webhook:",String(e));return new Response("EVENT_RECEIVED",{status:200})}}
 return new Response("Webhook Gelo Tutóia ativo",{status:200})}}
