@@ -194,5 +194,41 @@ if(wz?.wuzapi){
   return new Response("EVENT_RECEIVED",{status:200});
 }
 if(!await assinaturaValida(request,raw,env.META_APP_SECRET))return new Response("Assinatura inválida",{status:403});
-const value=body?.entry?.[0]?.changes?.[0]?.value,message=value?.messages?.[0],contact=value?.contacts?.[0];if(!message)return new Response("EVENT_RECEIVED",{status:200});const remetente=message.from||contact?.wa_id||"desconhecido";if(!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});const key=chaveMensagem(message.id),resumo={tipo:message.type||"desconhecido",remetente,nome:contact?.profile?.name||"",mensagem_id:message.id||"",texto:message.text?.body||"",audio_id:message.audio?.id||"",audio_mime_type:message.audio?.mime_type||"",audio_voz:message.audio?.voice===true,status:"pendente",recebido_em:new Date().toISOString()};await salvar(env,key,resumo);if(message.type==="text"&&resumo.texto){try{await interpretar(env,key,resumo.texto,remetente)}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}if(message.type==="audio"&&message.audio?.id){if(!env.META_ACCESS_TOKEN)await salvar(env,key,{status:"aguardando_token_meta"});else try{const media=await getWhatsAppMediaInfo(message.audio.id,env.META_ACCESS_TOKEN);if(media.url){const audio=await downloadWhatsAppMedia(media.url,env.META_ACCESS_TOKEN);await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength});try{const texto=await transcreverAudio(env,audio);await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});await interpretar(env,key,texto,remetente)}catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}}}catch(e){await salvar(env,key,{status:"erro_audio_meta",erro_audio:String(e)})}}return new Response("EVENT_RECEIVED",{status:200})}catch(e){console.log("Gelo Tutóia - erro no webhook:",String(e));return new Response("EVENT_RECEIVED",{status:200})}}
+let processadas=0;
+for(const entry of Array.isArray(body?.entry)?body.entry:[]){
+  for(const change of Array.isArray(entry?.changes)?entry.changes:[]){
+    const value=change?.value||{};
+    const contacts=Array.isArray(value?.contacts)?value.contacts:[];
+    const messages=Array.isArray(value?.messages)?value.messages:[];
+    for(const message of messages){
+      const contact=contacts.find(c=>c?.wa_id===message?.from)||contacts[0]||{};
+      const remetente=message?.from||contact?.wa_id||"desconhecido";
+      if(!remetenteAutorizado(env,remetente))continue;
+      const key=chaveMensagem(message?.id);
+      const resumo={tipo:message?.type||"desconhecido",remetente,nome:contact?.profile?.name||"",mensagem_id:message?.id||"",texto:message?.text?.body||"",audio_id:message?.audio?.id||"",audio_mime_type:message?.audio?.mime_type||"",audio_voz:message?.audio?.voice===true,status:"pendente",recebido_em:new Date().toISOString()};
+      await salvar(env,key,resumo);
+      if(message?.type==="text"&&resumo.texto){
+        try{await interpretar(env,key,resumo.texto,remetente)}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}
+      }
+      if(message?.type==="audio"&&message?.audio?.id){
+        if(!env.META_ACCESS_TOKEN)await salvar(env,key,{status:"aguardando_token_meta"});
+        else try{
+          const media=await getWhatsAppMediaInfo(message.audio.id,env.META_ACCESS_TOKEN);
+          if(media.url){
+            const audio=await downloadWhatsAppMedia(media.url,env.META_ACCESS_TOKEN);
+            await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength});
+            try{
+              const texto=await transcreverAudio(env,audio);
+              await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});
+              await interpretar(env,key,texto,remetente);
+            }catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}
+          }
+        }catch(e){await salvar(env,key,{status:"erro_audio_meta",erro_audio:String(e)})}
+      }
+      processadas++;
+    }
+  }
+}
+console.log("Gelo Tutóia - mensagens Meta processadas no lote:",processadas);
+return new Response("EVENT_RECEIVED",{status:200})}catch(e){console.log("Gelo Tutóia - erro no webhook:",String(e));return new Response("EVENT_RECEIVED",{status:200})}}
 return new Response("Webhook Gelo Tutóia ativo",{status:200})}}
