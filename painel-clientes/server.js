@@ -17,6 +17,7 @@ const SEED_CLIENT_BUSINESS_NAME = String(process.env.SEED_CLIENT_BUSINESS_NAME |
 const SEED_CLIENT_PHONE = String(process.env.SEED_CLIENT_PHONE || "").trim();
 const SEED_CLIENT_TOKEN = String(process.env.SEED_CLIENT_TOKEN || "").trim();
 const LEGACY_SEED_PHONE = "5521991777811";
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/$/, "");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -80,6 +81,37 @@ function adminHeaders(json = false) {
   const h = { Authorization: ADMIN_TOKEN };
   if (json) h["Content-Type"] = "application/json";
   return h;
+}
+
+function webhookUrlFor(c) {
+  if (!PUBLIC_BASE_URL || !c?.id) return "";
+  return `${PUBLIC_BASE_URL}/api/webhooks/wuzapi/${c.id}`;
+}
+
+async function configureClientWebhook(c) {
+  if (!c?.token) return false;
+  const webhookURL = webhookUrlFor(c);
+  if (!webhookURL) return false;
+  await wuz("/webhook", {
+    method: "POST",
+    headers: userHeaders(c.token, true),
+    body: JSON.stringify({ webhookURL })
+  });
+  c.webhookURL = webhookURL;
+  return true;
+}
+
+async function configureAllClientWebhooks() {
+  const clients = readClients();
+  let changed = false;
+  for (const c of clients) {
+    try {
+      if (await configureClientWebhook(c)) changed = true;
+    } catch (e) {
+      console.error("Falha ao configurar webhook de", c.businessName || c.name || c.id, e?.message || e);
+    }
+  }
+  if (changed) writeClients(clients);
 }
 
 async function ensureSeedClient() {
@@ -175,6 +207,7 @@ app.post("/api/clients", async (req, res) => {
       createdAt: new Date().toISOString()
     };
     clients.push(client);
+    try { await configureClientWebhook(client); } catch (e) { console.error("Falha ao configurar webhook do novo cliente:", e?.message || e); }
     writeClients(clients);
     res.status(201).json(publicClient(client));
   } catch (e) {
@@ -228,6 +261,35 @@ app.get("/api/clients/:id/status", async (req, res) => {
   }
 });
 
+app.post("/api/webhooks/wuzapi/:id", (req, res) => {
+  const clients = readClients();
+  const c = clients.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: "Cliente não encontrado." });
+
+  const payload = req.body || {};
+  let event = payload;
+  if (typeof payload.jsonData === "string") {
+    try { event = JSON.parse(payload.jsonData); } catch {}
+  }
+
+  const info = event?.event?.Info || event?.Info || {};
+  const msg = event?.event?.Message || event?.Message || {};
+  const text =
+    msg?.conversation ||
+    msg?.extendedTextMessage?.text ||
+    msg?.imageMessage?.caption ||
+    msg?.videoMessage?.caption ||
+    "";
+
+  c.lastMessageAt = new Date().toISOString();
+  c.lastMessageFrom = info?.SenderAlt || info?.Sender || "";
+  c.lastMessagePreview = String(text || info?.Type || "").slice(0, 160);
+  writeClients(clients);
+
+  console.log("Webhook recebido:", c.businessName || c.name, c.lastMessageFrom, c.lastMessagePreview);
+  res.json({ ok: true, aiEnabled: !!c.aiEnabled, manualMode: !!c.manualMode });
+});
+
 app.patch("/api/clients/:id/controls", (req, res) => {
   const clients = readClients();
   const c = clients.find(x => x.id === req.params.id);
@@ -257,6 +319,8 @@ async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
   catch (e) { console.error("Falha ao preparar cliente inicial:", e?.message || e); }
+  try { await configureAllClientWebhooks(); }
+  catch (e) { console.error("Falha ao configurar webhooks:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
   });
