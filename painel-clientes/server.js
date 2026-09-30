@@ -95,7 +95,7 @@ async function configureClientWebhook(c) {
   await wuz("/webhook", {
     method: "POST",
     headers: userHeaders(c.token, true),
-    body: JSON.stringify({ webhookURL })
+    body: JSON.stringify({ webhookURL, events: ["Message"] })
   });
   c.webhookURL = webhookURL;
   return true;
