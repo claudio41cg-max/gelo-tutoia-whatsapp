@@ -10,6 +10,7 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "clients.json");
+const EXTERNAL_STATE_FILE = path.join(DATA_DIR, "external-controls.json");
 const WUZAPI_URL = (process.env.WUZAPI_URL || "https://wuzapi-test-production.up.railway.app").replace(/\/$/, "");
 const ADMIN_TOKEN = process.env.WUZAPI_ADMIN_TOKEN || "";
 const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
@@ -22,6 +23,7 @@ const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-wha
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
+if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: true, manualMode: false }, null, 2));
 
 function readClients() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8") || "[]"); }
@@ -29,6 +31,19 @@ function readClients() {
 }
 function writeClients(clients) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(clients, null, 2));
+}
+function readExternalState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(EXTERNAL_STATE_FILE, "utf8") || "{}");
+    return { aiEnabled: state.aiEnabled !== false, manualMode: !!state.manualMode };
+  } catch {
+    return { aiEnabled: true, manualMode: false };
+  }
+}
+function writeExternalState(state) {
+  const clean = { aiEnabled: state.aiEnabled !== false, manualMode: !!state.manualMode };
+  fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify(clean, null, 2));
+  return clean;
 }
 
 function migrateLegacyClaroNumber() {
@@ -229,8 +244,8 @@ app.get("/api/clients", async (req, res) => {
             name: "WhatsApp Business",
             phone: phone || "Conectado",
             businessName: "Gelo Tutóia (TIM)",
-            aiEnabled: true,
-            manualMode: false,
+            aiEnabled: readExternalState().aiEnabled,
+            manualMode: readExternalState().manualMode,
             createdAt: null,
             connected,
             loggedIn: connected,
@@ -404,6 +419,13 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
 });
 
 app.patch("/api/clients/:id/controls", (req, res) => {
+  if (req.params.id === "external-gelo-tutoia") {
+    const state = readExternalState();
+    if (typeof req.body?.aiEnabled === "boolean") state.aiEnabled = req.body.aiEnabled;
+    if (typeof req.body?.manualMode === "boolean") state.manualMode = req.body.manualMode;
+    const saved = writeExternalState(state);
+    return res.json({ id: "external-gelo-tutoia", name: "WhatsApp Business", businessName: "Gelo Tutóia (TIM)", aiEnabled: saved.aiEnabled, manualMode: saved.manualMode, connected: true, loggedIn: true, externalManaged: true });
+  }
   const clients = readClients();
   const c = clients.find(x => x.id === req.params.id);
   if (!c) return res.status(404).json({ error: "Cliente não encontrado." });

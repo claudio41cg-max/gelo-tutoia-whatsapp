@@ -146,24 +146,15 @@ async function load(){const box=el('clients');try{const list=await api('/api/cli
     <div><div class="name">${esc(c.businessName||c.name)}</div><div class="person">${esc(c.name)} · ${esc(c.phone)}</div></div>
     <span class="badge ${c.loggedIn?'ok':''}">${c.loggedIn?'Conectado':'Desconectado'}</span>
   </div>
-  ${c.externalManaged ? `
-    <div class="controls">
-      <div class="control"><div class="controlText"><strong>WhatsApp Business</strong><small>Instância já conectada ao sistema Gelo Tutóia</small></div><span class="badge ok">Ativo</span></div>
-    </div>
-    <div class="actions">
-      <button class="btn secondary" disabled>Gerenciado pela conexão existente</button>
-    </div>
-  ` : `
-    <div class="controls">
-      <div class="control"><div class="controlText"><strong>Agente de IA</strong><small>Respostas automáticas deste cliente</small></div><label class="toggle"><input type="checkbox" ${c.aiEnabled?'checked':''} onchange="controls('${c.id}','aiEnabled',this.checked)"><span class="slider"></span></label></div>
-      <div class="control"><div class="controlText"><strong>Atendimento manual</strong><small>Pausa a automação para uma pessoa assumir</small></div><label class="toggle"><input type="checkbox" ${c.manualMode?'checked':''} onchange="controls('${c.id}','manualMode',this.checked)"><span class="slider"></span></label></div>
-    </div>
-    <div class="actions">
-      <button class="btn primary" onclick="connectClient('${c.id}')">${c.loggedIn?'Ver conexão':'Conectar WhatsApp'}</button>
-      <button class="btn secondary" onclick="refreshStatus('${c.id}')">Status</button>
-      ${c.connected?'<button class="btn danger" onclick="disconnectClient(\''+c.id+'\')">Desconectar</button>':''}
-    </div>
-  `}
+  <div class="controls">
+    <div class="control"><div class="controlText"><strong>Agente de IA</strong><small>Respostas automáticas deste cliente</small></div><label class="toggle"><input type="checkbox" ${c.aiEnabled?'checked':''} onchange="controls('${c.id}','aiEnabled',this.checked)"><span class="slider"></span></label></div>
+    <div class="control"><div class="controlText"><strong>Atendimento manual</strong><small>Pausa a automação para uma pessoa assumir</small></div><label class="toggle"><input type="checkbox" ${c.manualMode?'checked':''} onchange="controls('${c.id}','manualMode',this.checked)"><span class="slider"></span></label></div>
+  </div>
+  <div class="actions">
+    ${c.externalManaged
+      ? '<button class="btn secondary" disabled>Conexão existente protegida</button>'
+      : '<button class="btn primary" onclick="connectClient(\''+c.id+'\')">'+(c.loggedIn?'Ver conexão':'Conectar WhatsApp')+'</button><button class="btn secondary" onclick="refreshStatus(\''+c.id+'\')">Status</button>'+(c.connected?'<button class="btn danger" onclick="disconnectClient(\''+c.id+'\')">Desconectar</button>':'')}
+  </div>
 </div>`).join('')}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function backdrop(e,id){if(e.target.id===id)document.getElementById(id).classList.remove('open')}
