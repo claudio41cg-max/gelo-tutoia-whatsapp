@@ -191,7 +191,16 @@ FLUXO DE VENDA:
 }
 if(request.method==="POST"&&url.pathname==="/api/inbox/status"){try{const b=await request.json(),key=String(b?.remote_key||""),id=String(b?.remote_id||""),status=String(b?.status||"");if(!key.startsWith("mensagem:")||!id.startsWith(key+":"))return json({ok:false,erro:"Chave inválida"},{status:400});if(!["confirmada_app","ignorada_app"].includes(status))return json({ok:false,erro:"Status inválido"},{status:400});const reg=await env.VENDAS.get(key,{type:"json"})||{};await salvar(env,key,{status_itens:{...(reg.status_itens||{}),[id]:status},status_app_em:new Date().toISOString()});return json({ok:true})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="GET"){const mode=url.searchParams.get("hub.mode"),token=url.searchParams.get("hub.verify_token"),challenge=url.searchParams.get("hub.challenge");if(mode==="subscribe"&&token===VERIFY_TOKEN)return new Response(challenge,{status:200,headers:{"Content-Type":"text/plain"}});return new Response("Token de verificação inválido",{status:403})}
-if(request.method==="POST"){try{const raw=await request.text();const body=JSON.parse(raw);
+if(request.method==="POST"){try{
+  const raw=await request.text();
+  let body={};
+  const ct=String(request.headers.get("content-type")||"").toLowerCase();
+  if(ct.includes("application/x-www-form-urlencoded")){
+    const p=new URLSearchParams(raw);
+    body=Object.fromEntries(p.entries());
+  }else{
+    body=JSON.parse(raw);
+  }
 const wz=normalizarEventoWuzapi(body);
 if(wz?.wuzapi){
   // O Worker principal é o ponto de entrada do Gelo Tutóia.
