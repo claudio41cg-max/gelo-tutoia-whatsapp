@@ -44,3 +44,58 @@ function somenteLinkOuSemVenda(texto){
 function tipoCliente(nome,config){const x=(config?.clientes||[]).find(v=>v?.nome===nome);if(x?.tipo)return x.tipo;if(SO_FILTRADO.has(nome))return"filtrado";if(SO_ESCAMAS.has(nome))return"escamas";return"ambos"}
 function pagamentoEm(t){if(/\bpix\b|\bfez pix\b|\bfazer o pix\b|\bvai fazer pix\b|\bvai fazer o pix\b|\bpagou no pix\b/.test(t))return"PIX";if(/\bfiado\b|\bpagar depois\b|\bpaga depois\b/.test(t))return"Fiado";if(/\bdinheiro\b|\bpago\b|\bpagou\b|\bem especie\b/.test(t))return"Dinheiro";return"Não informado"}
 export function interpretarVenda(texto,config=null){if(somenteLinkOuSemVenda(texto))return{cliente:"",alias_detectado:"",escamas:0,filtrado:0,total_sacos:0,pagamento:"Não informado",status:"ignorar",texto_origem:String(texto||"").trim(),precisa_revisao:true,faltando:["mensagem sem contexto de venda"]};const t=norm(texto),c=cliente(texto,config);const semAlias=c.alias?t.replace(new RegExp(`(?:^|\\s)${c.alias.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}(?=$|\\s)`)," ").trim():t;const tokens=t.split(" ").filter(Boolean),qTokens=semAlias.split(" ").filter(Boolean),pf=["filtrado","filtrados","filtrada","filtradas","filtro"],pe=["escama","escamas","comum","comuns"],temF=tokens.some(x=>pf.includes(x)),temE=tokens.some(x=>pe.includes(x));const qtdF=temF?qtdPerto(qTokens,pf):null,qtdE=temE?qtdPerto(qTokens,pe):null;let filtrado=temF?(qtdF??0):0,escamas=temE?(qtdE??0):0;const tc=tipoCliente(c.nome,config),qSacos=qtdSacos(tokens),qAcao=qtdPorAcao(qTokens),qGeral=!temF&&!temE?(qSacos??qAcao??primeiroNumero(qTokens)):null;if(temF&&qtdF==null&&(qSacos??qAcao)!=null)filtrado=qSacos??qAcao;if(temE&&qtdE==null&&(qSacos??qAcao)!=null)escamas=qSacos??qAcao;if(!temF&&!temE){const q=qGeral??1;if(tc==="filtrado")filtrado=q;else if(tc==="escamas")escamas=q;else if(c.nome){/* cliente de ambos: não inventar produto */}}const pagamento=pagamentoEm(t),faltando=[];if(!c.nome)faltando.push("cliente");if(!(escamas+filtrado)){if(c.nome&&tc==="ambos")faltando.push("produto");else faltando.push("quantidade")}if((temF&&qtdF==null)||(temE&&qtdE==null)||(!temF&&!temE&&qGeral==null))faltando.push("quantidade explícita");if(pagamento==="Não informado")faltando.push("pagamento");if(clientesMencionados(texto,config).size>1)faltando.push("mais de um cliente");let numeros=0;for(let i=0;i<qTokens.length;i++){const n=numeroEm(qTokens,i);if(n){numeros++;i+=n.usados-1}}if((escamas+filtrado)>200){escamas=0;filtrado=0;faltando.push("quantidade fora do limite")}return{cliente:c.nome,alias_detectado:c.alias,escamas,filtrado,total_sacos:escamas+filtrado,pagamento,status:"pendente_revisao",texto_origem:String(texto||"").trim(),precisa_revisao:faltando.length>0,faltando}}
+
+function ocorrenciasClientes(texto,config){
+  const t=norm(texto),achados=[];
+  for(const [a,n] of aliases(config)){
+    let pos=0;
+    while(pos<t.length){
+      const i=t.indexOf(a,pos);
+      if(i<0)break;
+      const antes=i===0?' ':t[i-1],depois=i+a.length>=t.length?' ':t[i+a.length];
+      if(antes===' '&&depois===' ')achados.push({nome:n,alias:a,ini:i,fim:i+a.length});
+      pos=i+Math.max(1,a.length);
+    }
+  }
+  achados.sort((x,y)=>x.ini-y.ini||(y.alias.length-x.alias.length));
+  const limpos=[];
+  for(const x of achados){
+    const ultimo=limpos[limpos.length-1];
+    if(ultimo&&x.ini<ultimo.fim)continue;
+    if(ultimo&&x.nome===ultimo.nome&&x.ini<=ultimo.fim+3)continue;
+    limpos.push(x);
+  }
+  return limpos;
+}
+
+export function interpretarVendas(texto,config=null){
+  const original=String(texto||'').trim(),t=norm(original);
+  const ocorrencias=ocorrenciasClientes(original,config);
+  const nomes=[...new Set(ocorrencias.map(x=>x.nome))];
+  if(nomes.length<=1)return [interpretarVenda(original,config)];
+  const vendas=[];
+  for(let i=0;i<ocorrencias.length;i++){
+    const atual=ocorrencias[i];
+    if(i>0&&ocorrencias[i-1].nome===atual.nome)continue;
+    const proxima=ocorrencias[i+1];
+    const inicio=Math.max(0,atual.ini-24);
+    const fim=proxima?proxima.ini:t.length;
+    const trecho=t.slice(inicio,fim).trim();
+    const v=interpretarVenda(trecho,config);
+    v.cliente=atual.nome;v.alias_detectado=atual.alias;v.texto_origem=trecho;
+    const tc=tipoCliente(atual.nome,config);
+    if(v.total_sacos===0){
+      const tokens=trecho.split(' ').filter(Boolean);
+      const q=qtdSacos(tokens)??qtdPorAcao(tokens)??primeiroNumero(tokens);
+      if(Number.isInteger(q)&&q>0&&q<=200){
+        if(tc==='filtrado'){v.filtrado=q;v.escamas=0}
+        else if(tc==='escamas'){v.escamas=q;v.filtrado=0}
+        v.total_sacos=v.escamas+v.filtrado;
+      }
+    }
+    v.faltando=(v.faltando||[]).filter(x=>x!=='cliente'&&!(x==='quantidade'&&v.total_sacos>0)&&!(x==='quantidade explícita'&&v.total_sacos>0));
+    v.precisa_revisao=v.faltando.length>0;
+    vendas.push(v);
+  }
+  return vendas.length?vendas:[interpretarVenda(original,config)];
+}
