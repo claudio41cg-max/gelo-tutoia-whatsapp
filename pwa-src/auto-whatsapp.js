@@ -78,15 +78,23 @@
     limparFalsosPositivosLocais();
     let total=0,alterou=false,revisar=0;
     for(const v of vendasRecebidas){
-      if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
+      if(!['Pendente','Confirmada'].includes(v.status)||!v.remoteId||!hoje(v.criadoEm))continue;
       if(!vendaLocalValida(v))continue;
-      if(!jaLancada(v.remoteId)){
+
+      const faltandoNoDia=!jaLancada(v.remoteId);
+      if(faltandoNoDia){
         if(['PIX','Dinheiro','Fiado'].includes(v.pag))lancarRecebidaNoDia(v);
         else lancarSemPagamento(v);
         total++;
         if(v.confianca==='revisar'||!['PIX','Dinheiro','Fiado'].includes(v.pag))revisar++;
       }
-      v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='pendente';alterou=true;
+
+      // "Confirmada" no inbox não significa que a venda pode sumir do movimento local.
+      // Se o app foi zerado/recarregado e a venda de hoje não existe mais na tela principal,
+      // ela é restaurada automaticamente sem duplicar.
+      if(v.status!=='Confirmada'||faltandoNoDia){
+        v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='pendente';alterou=true;
+      }
     }
     if(alterou){
       // Durante os testes, toda venda reconhecível entra direto no movimento do dia.
