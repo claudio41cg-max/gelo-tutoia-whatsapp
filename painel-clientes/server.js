@@ -309,7 +309,13 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     .replace(/\D/g, "");
 
   if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
-    const body = await gerarRespostaIA(String(text || "").trim());
+    let body = "";
+    try {
+      body = await gerarRespostaIA(String(text || "").trim());
+    } catch (e) {
+      console.error("Falha ao gerar resposta IA:", e?.message || e);
+      return res.json({ ok: true, autoReply: false, aiError: e?.message || "Falha na IA" });
+    }
     try {
       const sent = await wuz("/chat/send/text", {
         method: "POST",
