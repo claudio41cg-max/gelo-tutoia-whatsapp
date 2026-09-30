@@ -194,6 +194,18 @@ if(request.method==="GET"){const mode=url.searchParams.get("hub.mode"),token=url
 if(request.method==="POST"){try{const raw=await request.text();const body=JSON.parse(raw);
 const wz=normalizarEventoWuzapi(body);
 if(wz?.wuzapi){
+  // O Worker principal é o ponto de entrada do Gelo Tutóia.
+  // Repassa uma cópia ao painel de agentes sem alterar o fluxo de vendas.
+  try{
+    const rr=await fetch("https://painel-clientes-production.up.railway.app/api/webhooks/wuzapi/external-gelo-tutoia",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    if(!rr.ok)console.log("Gelo Tutóia - painel recebeu com HTTP",rr.status);
+  }catch(e){
+    console.log("Gelo Tutóia - falha ao repassar ao painel:",String(e));
+  }
   if(wz.ignorar||(wz.deMim&&!wz.selfChat))return new Response("EVENT_RECEIVED",{status:200});
   const remetente=wz.remetente||"desconhecido";
   if(!wz.selfChat&&!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
