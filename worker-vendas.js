@@ -86,6 +86,29 @@ if(request.method==="GET"&&url.pathname==="/api/clientes"){try{return json({ok:t
 if(request.method==="POST"&&url.pathname==="/api/clientes"){try{return json({ok:true,clientes:await putConfig(env,await request.json())})}catch(e){return json({ok:false,erro:String(e)},{status:400})}}
 if(request.method==="GET"&&url.pathname==="/api/inbox"){try{return json({ok:true,vendas:await listarInbox(env),atualizado_em:new Date().toISOString()})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="GET"&&url.pathname==="/api/auto-status")return json({ok:true,auto_configurado:autoConfigurado(env),assinatura_configurada:!!env.META_APP_SECRET,remetentes_configurados:!!String(env.AUTHORIZED_SENDERS||"").trim()});
+if(request.method==="POST"&&url.pathname==="/api/agent/reply"){
+  try{
+    if(!env.AI)return json({ok:false,erro:"IA indisponível"},{status:503});
+    const b=await request.json();
+    const mensagem=String(b?.mensagem||"").trim();
+    if(!mensagem)return json({ok:false,erro:"Mensagem vazia"},{status:400});
+    const systemPrompt=`Você é um atendente de WhatsApp da Gelo Tutóia em fase de teste. Responda sempre em português do Brasil, de forma natural, curta e útil, como uma pessoa atendendo pelo WhatsApp. Não diga que é ChatGPT. Informações conhecidas: gelo em escamas custa R$ 7,00 por saco na regra geral; gelo filtrado custa R$ 13,00 por saco na regra geral. Se a pergunta exigir informação que não foi fornecida, como estoque exato, horário especial, endereço detalhado ou prazo específico, diga claramente que precisa confirmar em vez de inventar. Não ofereça descontos nem invente preços. Se o cliente apenas cumprimentar, cumprimente e pergunte como pode ajudar.`;
+    const r=await env.AI.run("@cf/meta/llama-3.1-8b-instruct",{
+      messages:[
+        {role:"system",content:systemPrompt},
+        {role:"user",content:mensagem}
+      ],
+      max_tokens:180,
+      temperature:0.4
+    });
+    const resposta=String(r?.response||r?.result?.response||"").trim();
+    if(!resposta)return json({ok:false,erro:"IA não retornou resposta"},{status:502});
+    return json({ok:true,resposta});
+  }catch(e){
+    console.log("Gelo Tutóia - erro agente IA:",String(e));
+    return json({ok:false,erro:String(e)},{status:500});
+  }
+}
 if(request.method==="POST"&&url.pathname==="/api/inbox/status"){try{const b=await request.json(),key=String(b?.remote_key||""),id=String(b?.remote_id||""),status=String(b?.status||"");if(!key.startsWith("mensagem:")||!id.startsWith(key+":"))return json({ok:false,erro:"Chave inválida"},{status:400});if(!["confirmada_app","ignorada_app"].includes(status))return json({ok:false,erro:"Status inválido"},{status:400});const reg=await env.VENDAS.get(key,{type:"json"})||{};await salvar(env,key,{status_itens:{...(reg.status_itens||{}),[id]:status},status_app_em:new Date().toISOString()});return json({ok:true})}catch(e){return json({ok:false,erro:String(e)},{status:500})}}
 if(request.method==="GET"){const mode=url.searchParams.get("hub.mode"),token=url.searchParams.get("hub.verify_token"),challenge=url.searchParams.get("hub.challenge");if(mode==="subscribe"&&token===VERIFY_TOKEN)return new Response(challenge,{status:200,headers:{"Content-Type":"text/plain"}});return new Response("Token de verificação inválido",{status:403})}
 if(request.method==="POST"){try{const raw=await request.text();const body=JSON.parse(raw);
