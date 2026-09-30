@@ -85,8 +85,9 @@ function adminHeaders(json = false) {
 }
 
 function webhookUrlFor(c) {
-  if (!PUBLIC_BASE_URL || !c?.id) return "";
-  return `${PUBLIC_BASE_URL}/api/webhooks/wuzapi/${c.id}`;
+  const key = String(c?.phone || c?.id || "").replace(/\D/g, "");
+  if (!PUBLIC_BASE_URL || !key) return "";
+  return `${PUBLIC_BASE_URL}/api/webhooks/wuzapi/${key}`;
 }
 
 async function configureClientWebhook(c) {
@@ -158,7 +159,7 @@ async function ensureSeedClient() {
     name,
     phone: SEED_CLIENT_PHONE,
     businessName,
-    aiEnabled: false,
+    aiEnabled: true,
     manualMode: false,
     connected: false,
     loggedIn: false,
@@ -277,7 +278,17 @@ app.get("/api/clients/:id/status", async (req, res) => {
 
 app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
   const clients = readClients();
-  const c = clients.find(x => x.id === req.params.id);
+  const key = String(req.params.id || "");
+  const keyDigits = key.replace(/\D/g, "");
+  let c = clients.find(x => x.id === key || String(x.phone || "").replace(/\D/g, "") === keyDigits);
+
+  if (!c) {
+    const instanceName = String(req.body?.instanceName || "").trim().toLowerCase();
+    if (instanceName) {
+      c = clients.find(x => String(x.businessName || x.name || "").trim().toLowerCase() === instanceName);
+    }
+  }
+
   if (!c) return res.status(404).json({ error: "Cliente não encontrado." });
 
   const payload = req.body || {};
