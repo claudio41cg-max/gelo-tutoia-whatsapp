@@ -1,4 +1,4 @@
-import { interpretarVenda } from "./parser.js";
+import { interpretarVenda, interpretarVendas } from "./parser.js";
 const VERIFY_TOKEN="gelo-tutoia-2026",GRAPH_VERSION="v26.0",TRANSCRIBE_MODEL="@cf/openai/whisper-large-v3-turbo",CONFIG_KEY="config:clientes";
 function corsHeaders(){return{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type","Cache-Control":"no-store"}}
 function json(data,init={}){return new Response(JSON.stringify(data),{...init,headers:{"Content-Type":"application/json; charset=utf-8",...corsHeaders(),...(init.headers||{})}})}
@@ -23,8 +23,29 @@ function arrayBufferToBase64(a){const b=new Uint8Array(a);let s="";for(let i=0;i
 async function transcreverAudio(env,a){if(!env.AI)throw new Error("binding AI não disponível");const r=await env.AI.run(TRANSCRIBE_MODEL,{audio:arrayBufferToBase64(a),task:"transcribe",language:"pt",vad_filter:true,initial_prompt:"Vendas de gelo Gelo Tutóia. Preserve nomes e apelidos dos clientes, quantidades, PIX, dinheiro, fiado, escamas e filtrado."});return String(r?.text||"").trim()}
 function chaveMensagem(id){return`mensagem:${id||`sem-id-${Date.now()}`}`}
 async function salvar(env,key,dados){if(!env.VENDAS||!key)return;const atual=await env.VENDAS.get(key,{type:"json"})||{};await env.VENDAS.put(key,JSON.stringify({...atual,...dados,atualizado_em:new Date().toISOString()}))}
-async function interpretar(env,key,texto,remetente,origem="meta"){const venda=interpretarVenda(texto,await getConfig(env));const auto_elegivel=autoConfigurado(env,origem)&&remetenteAutorizado(env,remetente)&&!venda.precisa_revisao&&venda.total_sacos>0;await salvar(env,key,{status:"venda_interpretada",venda,auto_elegivel,origem,interpretado_em:new Date().toISOString()});console.log("Gelo Tutóia - venda interpretada:",JSON.stringify(venda))}
-function itensVendaDoRegistro(key,reg){const v=reg?.venda;if(!v||!v.cliente)return[];const st=reg.status_itens||{},base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:reg.auto_elegivel===true},out=[];for(const[tipo,q,suf]of[["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){const id=`${key}:${suf}`;if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo})}return out}
+async function interpretar(env,key,texto,remetente,origem="meta"){
+  const config=await getConfig(env);
+  const vendas=interpretarVendas(texto,config).filter(v=>v&&v.cliente&&v.total_sacos>0);
+  const permitido=autoConfigurado(env,origem)&&remetenteAutorizado(env,remetente);
+  const preparadas=vendas.map(v=>({...v,auto_elegivel:permitido&&!v.precisa_revisao&&v.total_sacos>0}));
+  const venda=preparadas[0]||interpretarVenda(texto,config);
+  const auto_elegivel=preparadas.length===1?preparadas[0].auto_elegivel:false;
+  await salvar(env,key,{status:"venda_interpretada",venda,vendas:preparadas,auto_elegivel,origem,interpretado_em:new Date().toISOString()});
+  console.log("Gelo Tutóia - vendas interpretadas:",JSON.stringify(preparadas));
+}
+function itensVendaDoRegistro(key,reg){
+  const lista=Array.isArray(reg?.vendas)&&reg.vendas.length?reg.vendas:(reg?.venda?[reg.venda]:[]);
+  const st=reg.status_itens||{},out=[];
+  lista.forEach((v,idx)=>{
+    if(!v?.cliente)return;
+    const base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:v.auto_elegivel===true||(lista.length===1&&reg.auto_elegivel===true)};
+    for(const [tipo,q,suf] of [["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){
+      const id=lista.length===1?(key+":"+suf):(key+":v"+idx+":"+suf);
+      if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo});
+    }
+  });
+  return out;
+}
 async function listarInbox(env){if(!env.VENDAS)return[];const out=[];let cursor;do{const p=await env.VENDAS.list({prefix:"mensagem:",cursor,limit:100});for(const k of p.keys){const r=await env.VENDAS.get(k.name,{type:"json"});if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r))}cursor=p.list_complete?undefined:p.cursor}while(cursor);return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)))}
 
 function jidTexto(v){
