@@ -52,28 +52,58 @@
     const data=new Date(iso);
     return !Number.isNaN(data.getTime())&&data.toLocaleDateString('pt-BR')===new Date().toLocaleDateString('pt-BR');
   }
+  function lancarSemPagamento(v){
+    const item={tipo:v.tipo,qtd:v.qtd,pag:'Não informado',preco:v.preco,valor:v.valor,hora:v.hora||horaAgora(),origem:'WhatsApp automático',remoteId:v.remoteId,remoteKey:v.remoteKey,iaRevisar:v.confianca==='revisar'};
+    if(!S.vpc[v.cliente])S.vpc[v.cliente]=[];
+    S.vpc[v.cliente].push(item);
+    if(v.tipo==='esc')S.esc+=Number(v.qtd)||0;else if(v.tipo==='filt')S.filt+=Number(v.qtd)||0;
+    S.atendidos.add(v.cliente);
+  }
+  function vendaLocalValida(v){
+    const texto=String(v?.transcricao||v?.texto||v?.texto_origem||'');
+    const soLink=/^\s*(https?:\/\/|www\.)/i.test(texto);
+    return !soLink&&CLIENTES.includes(v?.cliente)&&Number.isInteger(v?.qtd)&&v.qtd>=1&&v.qtd<=200&&['esc','filt'].includes(v?.tipo)&&Number.isFinite(v?.valor)&&v.valor>0;
+  }
+  function limparFalsosPositivosLocais(){
+    const antes=vendasRecebidas.length;
+    // Não reatribuir vendasRecebidas: na base do app ela pode ser const.
+    // Remove apenas os falsos positivos, preservando a referência usada pelas telas.
+    for(let i=vendasRecebidas.length-1;i>=0;i--){
+      const v=vendasRecebidas[i];
+      if(v?.status==='Pendente'&&!vendaLocalValida(v))vendasRecebidas.splice(i,1);
+    }
+    if(vendasRecebidas.length!==antes)salvarInbox();
+  }
   function integrar(){
-    let total=0,alterou=false;
+    limparFalsosPositivosLocais();
+    let total=0,alterou=false,revisar=0;
     for(const v of vendasRecebidas){
-      if(v.status!=='Pendente'||v.auto_elegivel!==true||!v.remoteId||!hoje(v.criadoEm))continue;
-      if(!CLIENTES.includes(v.cliente)||!Number.isInteger(v.qtd)||v.qtd<1||v.qtd>200||!['PIX','Dinheiro','Fiado'].includes(v.pag))continue;
-      if(!Number.isFinite(v.valor)||v.valor<=0)continue;
-      if(!jaLancada(v.remoteId)){lancarRecebidaNoDia(v);total++}
+      if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
+      if(!vendaLocalValida(v))continue;
+      if(!jaLancada(v.remoteId)){
+        if(['PIX','Dinheiro','Fiado'].includes(v.pag))lancarRecebidaNoDia(v);
+        else lancarSemPagamento(v);
+        total++;
+        if(v.confianca==='revisar'||!['PIX','Dinheiro','Fiado'].includes(v.pag))revisar++;
+      }
       v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='pendente';alterou=true;
     }
     if(alterou){
-      // O identificador da mensagem é salvo junto da venda para não duplicar após recarregar.
+      // Durante os testes, toda venda reconhecível entra direto no movimento do dia.
+      // Itens duvidosos permanecem marcados para conferência/correção no relatório.
       salvarEstado();salvarDiaNoHistorico();salvarInbox();updHdr();
-      if(!S2().classList.contains('ativa'))telaClientes(true);
-      if(total)toast(`✓ ${total} venda${total>1?'s':''} do WhatsApp lançada${total>1?'s':''} automaticamente`);
+      // Atualiza imediatamente a tela principal para a venda aparecer na frente do app.
+      try{telaClientes(true)}catch(e){console.log('Gelo Tutóia - falha ao atualizar tela principal:',e)}
+      if(total)toast(`✓ ${total} venda${total>1?'s':''} do WhatsApp lançada${total>1?'s':''} automaticamente${revisar?' · '+revisar+' para revisar':''}`);
     }
     return total;
   }
+  setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
   sincronizarInboxRemoto=async function(mostrarAviso=true){
     const resultado=await syncAnterior(mostrarAviso);
     if(resultado?.ok){
       integrar();
-      for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.auto_elegivel===true&&x.syncRemoto==='pendente')){
+      for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
         await marcarStatusRemoto(v,'confirmada_app');
       }
     }
