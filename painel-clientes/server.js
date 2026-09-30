@@ -103,11 +103,11 @@ async function configureClientWebhook(c) {
   return true;
 }
 
-async function gerarRespostaIA(mensagem) {
+async function gerarRespostaIA(mensagem, telefone = "") {
   const res = await fetch(AI_AGENT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mensagem })
+    body: JSON.stringify({ mensagem, telefone })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.ok || !data?.resposta) {
@@ -322,7 +322,7 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
   if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
     let body = "";
     try {
-      body = await gerarRespostaIA(String(text || "").trim());
+      body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
     } catch (e) {
       console.error("Falha ao gerar resposta IA:", e?.message || e);
       return res.json({ ok: true, autoReply: false, aiError: e?.message || "Falha na IA" });
