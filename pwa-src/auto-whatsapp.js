@@ -59,12 +59,22 @@
     if(v.tipo==='esc')S.esc+=Number(v.qtd)||0;else if(v.tipo==='filt')S.filt+=Number(v.qtd)||0;
     S.atendidos.add(v.cliente);
   }
+  function vendaLocalValida(v){
+    const texto=String(v?.transcricao||v?.texto||v?.texto_origem||'');
+    const soLink=/^\s*(https?:\/\/|www\.)/i.test(texto);
+    return !soLink&&CLIENTES.includes(v?.cliente)&&Number.isInteger(v?.qtd)&&v.qtd>=1&&v.qtd<=200&&['esc','filt'].includes(v?.tipo)&&Number.isFinite(v?.valor)&&v.valor>0;
+  }
+  function limparFalsosPositivosLocais(){
+    const antes=vendasRecebidas.length;
+    vendasRecebidas=vendasRecebidas.filter(v=>v.status!=='Pendente'||vendaLocalValida(v));
+    if(vendasRecebidas.length!==antes)salvarInbox();
+  }
   function integrar(){
+    limparFalsosPositivosLocais();
     let total=0,alterou=false,revisar=0;
     for(const v of vendasRecebidas){
       if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
-      if(!CLIENTES.includes(v.cliente)||!Number.isInteger(v.qtd)||v.qtd<1||v.qtd>200)continue;
-      if(!['esc','filt'].includes(v.tipo)||!Number.isFinite(v.valor)||v.valor<=0)continue;
+      if(!vendaLocalValida(v))continue;
       if(!jaLancada(v.remoteId)){
         if(['PIX','Dinheiro','Fiado'].includes(v.pag))lancarRecebidaNoDia(v);
         else lancarSemPagamento(v);
@@ -82,6 +92,7 @@
     }
     return total;
   }
+  setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
   sincronizarInboxRemoto=async function(mostrarAviso=true){
     const resultado=await syncAnterior(mostrarAviso);
     if(resultado?.ok){
