@@ -999,9 +999,19 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
 
   const isIncoming = info?.IsFromMe === false;
   const isPrivateChat = info?.IsGroup === false;
-  const senderPhone = String(info?.SenderAlt || "")
-    .replace("@s.whatsapp.net", "")
+  const senderPhone = String(info?.SenderAlt || info?.Sender || "")
+    .replace(/@.*/, "")
     .replace(/\D/g, "");
+  const senderJid = String(info?.Sender || "").trim();
+  const senderAltJid = String(info?.SenderAlt || "").trim();
+  const chatJid = String(info?.Chat || "").trim();
+  const replyTarget =
+    /@lid$/i.test(chatJid) ? chatJid :
+    /@lid$/i.test(senderJid) ? senderJid :
+    /@s\.whatsapp\.net$/i.test(chatJid) ? chatJid :
+    /@s\.whatsapp\.net$/i.test(senderJid) ? senderJid :
+    /@s\.whatsapp\.net$/i.test(senderAltJid) ? senderAltJid :
+    senderPhone;
 
   // Se esta instância estiver enviando uma mensagem para o WhatsApp principal do Gelo Tutóia
   // (caso de teste Claro -> TIM), encaminha uma cópia ao Worker de vendas.
@@ -1045,7 +1055,9 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
         method: "POST",
         headers: userHeaders(c.token, true),
         body: JSON.stringify({
-          Phone: senderPhone,
+          // Usa o JID/LID exato recebido do WhatsApp quando disponível.
+          // Isso evita o erro "no LID found" ao tentar reconstruir o destinatário pelo número.
+          Phone: replyTarget,
           Body: body,
           Id: crypto.randomBytes(16).toString("hex").toUpperCase()
         })
