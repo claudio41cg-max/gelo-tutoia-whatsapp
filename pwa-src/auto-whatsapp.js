@@ -3,6 +3,9 @@
   const syncAnterior=sincronizarInboxRemoto;
   const PANEL_INBOX_API='https://painel-clientes-production.up.railway.app/api/gelo/inbox';
   const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
+  const PANEL_RESET_DAY='https://painel-clientes-production.up.railway.app/api/gelo/reset-day';
+  let gtSyncGeneration=0;
+  let gtResetEmAndamento=false;
   const GT_RESET_CUTOFF_KEY='gelo_tutoia_reset_cutoff_v1';
   const GT_IGNORED_REMOTE_IDS_KEY='gelo_tutoia_ignored_remote_ids_v1';
   function idsIgnorados(){
@@ -42,14 +45,25 @@
     if(!btn||btn.dataset.gtResetCompleto==='1')return;
     btn.dataset.gtResetCompleto='1';
     btn.onclick=()=>{
-      confirmar('Reiniciar o dia?','Todos os dados do dia serão apagados e vendas antigas do WhatsApp não voltarão. Tem certeza?','Sim, reiniciar',()=>{
-        const corteAgora=Date.now();
-        ignorarIdsAtuais();
-        localStorage.setItem(GT_RESET_CUTOFF_KEY,String(corteAgora));
-        vendasRecebidas.splice(0,vendasRecebidas.length);
-        salvarInbox();
-        S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
-        salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');
+      confirmar('Reiniciar o dia?','Todos os dados do movimento do dia serão zerados. O histórico do WhatsApp continuará guardado, mas não será relançado.','Sim, reiniciar',async()=>{
+        gtResetEmAndamento=true;
+        gtSyncGeneration++;
+        try{
+          ignorarIdsAtuais();
+          let corteAgora=Date.now();
+          try{
+            const rr=await fetch(PANEL_RESET_DAY+'?ts='+Date.now(),{method:'POST',cache:'no-store'});
+            const dd=await rr.json().catch(()=>({}));
+            if(rr.ok&&Number(dd?.cutoff)>0)corteAgora=Number(dd.cutoff);
+          }catch(e){console.warn('Falha ao gravar reset no servidor',e)}
+          localStorage.setItem(GT_RESET_CUTOFF_KEY,String(corteAgora));
+          vendasRecebidas.splice(0,vendasRecebidas.length);
+          salvarInbox();
+          S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
+          salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');
+        }finally{
+          setTimeout(()=>{gtResetEmAndamento=false},1200);
+        }
       });
     };
   }
@@ -234,6 +248,7 @@
       const r=await fetch(PANEL_LOCAL_FEED+'?after='+encodeURIComponent(corte)+'&ts='+Date.now(),{cache:'no-store'});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const d=await r.json();
+      if(Number(d?.server_cutoff)>resetCutoff())localStorage.setItem(GT_RESET_CUTOFF_KEY,String(Number(d.server_cutoff)));
       const mensagens=Array.isArray(d?.mensagens)?d.mensagens:[];
       let novas=0,ignoradas=0;
       for(const m of mensagens){
@@ -338,19 +353,16 @@
   }
 
   sincronizarInboxRemoto=async function(mostrarAviso=true){
-    if(syncRapidoEmAndamento)return {ok:false,ocupado:true};
+    if(syncRapidoEmAndamento||gtResetEmAndamento)return {ok:false,ocupado:true};
     syncRapidoEmAndamento=true;
+    const minhaGeracao=gtSyncGeneration;
     try{
-      let resultado=await sincronizarViaHistoricoLocal(false);
-      if(!resultado?.ok)resultado=await syncAnterior(false);
-      if(!resultado?.ok)resultado=await sincronizarViaPainel(mostrarAviso);
+      const resultado=await sincronizarViaHistoricoLocal(mostrarAviso);
       if(resultado?.ok){
+        if(minhaGeracao!==gtSyncGeneration||gtResetEmAndamento)return {ok:false,reset:true};
         limparAntesDoCorte();
         removerIdsIgnorados();
         const total=integrar();
-        for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
-          await marcarStatusRemoto(v,'confirmada_app');
-        }
         if(mostrarAviso&&!total&&resultado?.novas)toast('📥 '+resultado.novas+' venda(s) recebida(s)');
         else if(mostrarAviso&&!total&&!resultado?.novas&&resultado?.via!=='painel')toast('✓ WhatsApp atualizado');
       }else if(mostrarAviso&&resultado?.via!=='painel'){
