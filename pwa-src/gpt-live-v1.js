@@ -143,9 +143,9 @@ async function start(options){
   }
 }
 function cancelResponse(){
-  // O gateway Live atual não aceita output_audio_buffer.clear.
-  // response.cancel é suficiente para interromper a resposta em andamento.
-  sendEvent({type:'response.cancel'});
+  // O gateway Live atual não oferece evento de cancelamento.
+  // Mantemos esta função como no-op para evitar erro na sessão.
+  return false;
 }
 function speakText(text){
   text=String(text||'').trim();
