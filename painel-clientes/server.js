@@ -254,6 +254,122 @@ function localDate(iso) {
   const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return `${v.year}-${v.month}-${v.day}`;
 }
+
+app.get("/api/agent/historico-dia", async (req, res) => {
+  try {
+    if (!agentAuthorized(req)) return res.status(401).json({ error: "Não autorizado" });
+
+    const data = String(req.query?.data || "").trim();
+    const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data)
+      ? data
+      : new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+
+    const business = await findExistingBusinessUser();
+    const token = String(business?.token || business?.Token || "").trim();
+    if (!token) return res.status(503).json({ error: "WhatsApp principal sem acesso ao histórico" });
+
+    const businessJid = String(business?.jid || business?.Jid || business?.JID || "").trim();
+    const businessPhone = businessJid.replace(/@.*/, "").replace(/\D/g, "");
+
+    const pessoas = [
+      { nome:"Tafarel", phone:HELPER_TAFA_PHONE, jids:helperJidsByName("Tafarel") },
+      { nome:"Maíra", phone:HELPER_MAIRA_PHONE, jids:helperJidsByName("Maíra") },
+      { nome:"Cláudio", phone:businessPhone, jids:[...new Set([businessJid, businessPhone ? businessPhone + "@s.whatsapp.net" : ""].filter(Boolean))] }
+    ].filter(p=>p.phone && p.jids.length);
+
+    const historico = [];
+    const vistos = new Set();
+
+    for (const pessoa of pessoas) {
+      for (const jid of pessoa.jids) {
+        try {
+          const h = await wuz("/chat/history?chat_jid=" + encodeURIComponent(jid) + "&limit=1000", { headers:userHeaders(token) });
+          const arr = Array.isArray(h?.data) ? h.data : Array.isArray(h) ? h : [];
+          for (const m of arr) {
+            if (localDate(m?.timestamp) !== targetDate) continue;
+            const id = String(m?.message_id || "");
+            const dedupe = id || [pessoa.nome, m?.timestamp || "", m?.message_type || "", m?.text_content || ""].join("|");
+            if (vistos.has(dedupe)) continue;
+            vistos.add(dedupe);
+            historico.push({
+              pessoa:pessoa.nome,
+              phone:pessoa.phone,
+              message_id:id,
+              timestamp:m?.timestamp || "",
+              message_type:m?.message_type || "",
+              text_content:m?.text_content || "",
+              media_link:m?.media_link || "",
+              chat_jid:m?.chat_jid || jid,
+              sender_jid:m?.sender_jid || ""
+            });
+          }
+        } catch (e) {
+          if (e?.status !== 501) console.error("Falha ao ler histórico diário", pessoa.nome, e?.message || e);
+        }
+      }
+    }
+
+    historico.sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
+
+    const ids = new Set(historico.map(m=>m.message_id).filter(Boolean));
+    const phonesByName = Object.fromEntries(pessoas.map(p=>[p.nome,p.phone]));
+    const personById = new Map(historico.map(m=>[m.message_id,m.pessoa]).filter(x=>x[0]));
+
+    let inbox = [];
+    try {
+      const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
+      const inboxData = await inboxResp.json().catch(()=>({}));
+      inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
+    } catch (e) {
+      console.error("Falha ao cruzar inbox no histórico diário:", e?.message || e);
+    }
+
+    const vendas = inbox.filter(v => {
+      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
+      const remetente = String(v?.remetente || "").replace(/\D/g, "");
+      return localDate(v?.recebido_em) === targetDate &&
+        (ids.has(id) || Object.values(phonesByName).includes(remetente));
+    }).map(v => {
+      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
+      const remetente = String(v?.remetente || "").replace(/\D/g, "");
+      const pessoa = personById.get(id) ||
+        Object.entries(phonesByName).find(([,phone])=>phone===remetente)?.[0] || "";
+      return {
+        pessoa,
+        recebido_em:v.recebido_em,
+        transcricao:v.transcricao,
+        cliente:v.cliente,
+        qtd:v.qtd,
+        tipo:v.tipo,
+        pagamento:v.pagamento,
+        confianca:v.confianca,
+        remote_key:v.remote_key
+      };
+    }).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
+
+    const pessoasEncontradas = [...new Set(historico.map(m=>m.pessoa).filter(Boolean))];
+
+    res.json({
+      ok:true,
+      data:targetDate,
+      pessoas:pessoasEncontradas,
+      mensagens_historico:historico.length,
+      mensagens:historico.map(m=>({
+        pessoa:m.pessoa,
+        recebido_em:m.timestamp,
+        tipo:m.message_type,
+        texto:m.text_content || "",
+        tem_midia:!!m.media_link,
+        message_id:m.message_id
+      })),
+      vendas
+    });
+  } catch (e) {
+    console.error("Falha no histórico diário do agente:", e?.message || e);
+    res.status(500).json({ error:String(e?.message || e) });
+  }
+});
+
 app.get("/api/agent/vendas-ajudante", async (req, res) => {
   try {
     if (!agentAuthorized(req)) return res.status(401).json({ error: "Não autorizado" });
