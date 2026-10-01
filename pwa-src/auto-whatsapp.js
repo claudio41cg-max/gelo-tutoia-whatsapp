@@ -2,6 +2,7 @@
 (()=>{
   const syncAnterior=sincronizarInboxRemoto;
   const PANEL_INBOX_API='https://painel-clientes-production.up.railway.app/api/gelo/inbox';
+  const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
   const lancarAnterior=lancarRecebidaNoDia;
   const confirmarAnterior=confirmarVendaRecebida;
   let statusAtivo=null,pendencias=[];
@@ -167,6 +168,54 @@
   let syncRapidoEmAndamento=false;
   setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},150);
   setTimeout(()=>{try{sincronizarInboxRemoto(false)}catch(e){}},1800);
+  async function sincronizarViaHistoricoLocal(mostrarAviso){
+    try{
+      const r=await fetch(PANEL_LOCAL_FEED+'?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      const mensagens=Array.isArray(d?.mensagens)?d.mensagens:[];
+      let novas=0,ignoradas=0;
+      for(const m of mensagens){
+        const texto=String(m?.texto||'').trim();
+        if(!texto)continue;
+        const vendas=typeof interpretarLinhaVenda==='function'?interpretarLinhaVenda(texto):[];
+        let idx=0;
+        for(const v of vendas){
+          if(!v?.ok){ignoradas++;continue}
+          const remoteId='railway-'+String(m?.message_id||m?.timestamp||Date.now())+'-'+(idx++);
+          if(vendasRecebidas.some(x=>String(x?.remoteId||'')===remoteId))continue;
+          const criadoEm=String(m?.timestamp||new Date().toISOString());
+          vendasRecebidas.push({
+            id:'remoto-'+remoteId,
+            remoteId,
+            remoteKey:'',
+            criadoEm,
+            hora:horaDaDataIso(criadoEm),
+            origem:'WhatsApp automático',
+            transcricao:texto,
+            cliente:v.cliente,
+            qtd:Number(v.qtd)||0,
+            tipo:v.tipo,
+            pag:v.pag,
+            preco:Number(v.preco)||precoVendaRemota(v.cliente,v.tipo),
+            valor:Number(v.valor)||((Number(v.qtd)||0)*precoVendaRemota(v.cliente,v.tipo)),
+            status:'Pendente',
+            confianca:'alta',
+            syncRemoto:'local'
+          });
+          novas++;
+        }
+      }
+      if(novas)salvarInbox();
+      atualizarBadgeInbox();
+      return {ok:true,novas,ignoradas,via:'railway-local'};
+    }catch(e){
+      console.warn('Falha no histórico local do Railway',e);
+      if(mostrarAviso)toast('⚠ Não consegui buscar vendas agora');
+      return {ok:false,erro:String(e),via:'railway-local'};
+    }
+  }
+
   async function sincronizarViaPainel(mostrarAviso){
     try{
       const r=await fetch(PANEL_INBOX_API+'?ts='+Date.now(),{cache:'no-store'});
@@ -217,7 +266,8 @@
     syncRapidoEmAndamento=true;
     try{
       let resultado=await syncAnterior(false);
-      if(!resultado?.ok)resultado=await sincronizarViaPainel(mostrarAviso);
+      if(!resultado?.ok)resultado=await sincronizarViaPainel(false);
+      if(!resultado?.ok)resultado=await sincronizarViaHistoricoLocal(mostrarAviso);
       if(resultado?.ok){
         const total=integrar();
         for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
