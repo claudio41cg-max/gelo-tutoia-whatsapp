@@ -4,7 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const app = express();
-app.use(express.json({ limit: "24mb" }));
+app.use(express.json({ limit: "64mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
@@ -198,8 +198,16 @@ async function processAuthorizedHistoricalAudio({token,messageId,timestamp,perso
     body:JSON.stringify(relay)
   });
   const result=await rr.json().catch(()=>({}));
-  if(!rr.ok || !result?.ok) return null;
+  const workerErro=String(result?.erro||result?.error||"").trim();
+  if(!rr.ok || !result?.ok){
+    console.error("Falha no Worker ao transcrever áudio histórico:",id,"HTTP",rr.status,workerErro||"sem detalhe");
+    return null;
+  }
   const transcricao=String(result?.transcricao||"").trim();
+  if(!transcricao){
+    console.error("Worker retornou áudio histórico sem transcrição:",id,workerErro||"sem detalhe");
+    return null;
+  }
   mergeWuzapiHistory(id,{
     timestamp:String(timestamp||""),
     pessoa:String(person||"Remetente"),
@@ -250,12 +258,17 @@ async function backfillAuthorizedAudioForDate(targetDate, suppliedToken="") {
     }
   }
   let processed=0;
-  for(let i=0;i<jobs.length;i+=3){
-    const batch=jobs.slice(i,i+3);
-    const done=await Promise.all(batch.map(j=>processAuthorizedHistoricalAudio(j).catch(()=>null)));
-    processed+=done.filter(Boolean).length;
+  let failed=0;
+  for(const job of jobs){
+    const done=await processAuthorizedHistoricalAudio(job).catch(e=>{
+      console.error("Falha ao processar áudio histórico autorizado:",job?.messageId||"",e?.message||e);
+      return null;
+    });
+    if(done) processed++;
+    else failed++;
+    await new Promise(r=>setTimeout(r,250));
   }
-  return {processed,total:jobs.length};
+  return {processed,failed,total:jobs.length};
 }
 
 function migrateLegacyClaroNumber() {
@@ -1658,7 +1671,16 @@ async function start() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
     const hoje=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-    setTimeout(async()=>{try{await backfillAuthorizedAudioForDate(hoje);}catch(e){console.error("Falha no backfill de áudio autorizado:",e?.message||e);}finally{logAudioHistoryConfirmation();}},2000);
+    setTimeout(async()=>{
+      try{
+        const r=await backfillAuthorizedAudioForDate(hoje);
+        console.log("AUDIO_BACKFILL_RESULT",JSON.stringify(r));
+      }catch(e){
+        console.error("Falha no backfill de áudio autorizado:",e?.message||e);
+      }finally{
+        logAudioHistoryConfirmation();
+      }
+    },2000);
   });
 }
 
