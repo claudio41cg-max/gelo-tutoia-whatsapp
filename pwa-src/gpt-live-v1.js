@@ -55,6 +55,15 @@ function parseEvent(raw){
     if(text)try{state.onTranscript&&state.onTranscript({role:'assistant',text,final:false,delta:true})}catch(e){}
     return;
   }
+  if(type==='input_transcript.added'||type==='output_transcript.added'){
+    const text=String(ev&&ev.item&&ev.item.text||'').trim();
+    if(text){
+      const role=type.startsWith('input')?'user':'assistant';
+      try{state.onTranscript&&state.onTranscript({role,text,final:true,added:true})}catch(e){}
+      emit(role==='assistant'?'assistant-done':'user-stopped');
+    }
+    return;
+  }
   if(type==='error'){
     emit('error',String(ev&&ev.error&&ev.error.message||ev&&ev.message||'Erro no GPT Live.'));
   }
@@ -147,15 +156,20 @@ function cancelResponse(){
   // Mantemos esta função como no-op para evitar erro na sessão.
   return false;
 }
+function pauseInput(){
+  return sendEvent({type:'input_audio.pause'});
+}
+function resumeInput(){
+  return sendEvent({type:'input_audio.resume'});
+}
 function speakText(text){
   text=String(text||'').trim();
   if(!text)return false;
   if(!sendEvent({
-    type:'conversation.item.create',
-    item:{type:'message',role:'user',content:[{type:'input_text',text:'Leia em voz alta exatamente este texto, sem acrescentar nada:\n\n'+text}]}
+    type:'session.context.append',
+    content:'RESULTADO REAL DO SISTEMA GELO TUTÓIA. Responda ao usuário com base somente nestes dados e em português do Brasil. Não diga que ainda está pesquisando.\n\n'+text.slice(0,4000)
   }))return false;
-  sendEvent({type:'response.create',response:{output_modalities:['audio'],instructions:'Leia exatamente o texto enviado, sem comentários extras.'}});
-  return true;
+  return sendEvent({type:'response.create'});
 }
 function setMuted(v){
   state.muted=!!v;
@@ -163,5 +177,5 @@ function setMuted(v){
   emit(state.muted?'muted':'unmuted');
   return state.muted;
 }
-window.GeloGPTLive={state,start,stop,sendEvent,cancelResponse,speakText,setMuted,toggleMute:()=>setMuted(!state.muted)};
+window.GeloGPTLive={state,start,stop,sendEvent,cancelResponse,speakText,pauseInput,resumeInput,setMuted,toggleMute:()=>setMuted(!state.muted)};
 })();
