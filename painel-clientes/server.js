@@ -320,6 +320,31 @@ app.get("/api/agent/historico-dia", async (req, res) => {
 
     const nomePorJid = new Map();
     const nomePorPhone = new Map();
+
+    const normNome=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+    function pushNameHistorico(m) {
+      let raw = m?.data_json ?? m?.datajson ?? "";
+      if (!raw) return "";
+      try { if (typeof raw === "string") raw = JSON.parse(raw); } catch { return ""; }
+      const fila=[raw];
+      let passos=0;
+      while(fila.length && passos++<80){
+        const x=fila.shift();
+        if(!x||typeof x!=="object") continue;
+        for(const [k,v] of Object.entries(x)){
+          if(/^(pushname|push_name|pushName)$/i.test(k) && typeof v==="string" && v.trim()) return v.trim();
+          if(v&&typeof v==="object") fila.push(v);
+        }
+      }
+      return "";
+    }
+    function pessoaPorPushName(nome){
+      const n=normNome(nome);
+      if(["claudio","claudio ferreira"].includes(n)) return "Cláudio";
+      if(["tafa","tafarel","tafa luciano","luciano","luciano rocha"].includes(n)) return "Tafarel";
+      if(["maira","flavio","flavio maira"].includes(n)) return "Maíra";
+      return "";
+    }
     for (const p of pessoas) {
       for (const jid of p.jids) nomePorJid.set(String(jid), p.nome);
       if (p.phone) {
@@ -329,6 +354,27 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     }
 
     const jids = new Set(pessoas.flatMap(p=>p.jids).filter(Boolean));
+
+    // Descobre os chats do dia, mas só aceita mensagens cujo remetente seja autorizado.
+    // Isso resolve os JIDs do tipo LID sem trazer conversas pessoais para o GPT.
+    try {
+      const idxResp = await wuz("/chat/history?chat_jid=index", { headers:userHeaders(token) });
+      let payload = idxResp?.data ?? idxResp;
+      if (typeof payload === "string") {
+        try { payload = JSON.parse(payload); } catch {}
+      }
+      const businessId = String(business?.id || business?.ID || business?.user_id || business?.userID || "").trim();
+      const chats = businessId && payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (Array.isArray(payload[businessId]) ? payload[businessId] : [])
+        : [];
+      for (const ch of chats.slice(0,250)) {
+        const jid=String(ch?.chat_jid||"").trim();
+        const last=String(ch?.last_updated||ch?.last_message_time||"");
+        if(jid && (!last || localDate(last)>=targetDate)) jids.add(jid);
+      }
+    } catch (e) {
+      console.error("Falha ao descobrir chats autorizados do WuzAPI:", e?.message || e);
+    }
 
     const historico = [];
     const vistos = new Set();
@@ -363,8 +409,14 @@ app.get("/api/agent/historico-dia", async (req, res) => {
           const id = String(m?.message_id || "");
           const senderJid = String(m?.sender_jid || "");
           const phone = senderJid.replace(/@.*/, "").replace(/\D/g, "");
-          if (!authorizedHistoryPhones().has(phone) && !authorizedHistoryJids().has(senderJid) && !authorizedHistoryJids().has(String(m?.chat_jid || jid))) continue;
-          const pessoa = nomePorPhone.get(phone) || nomePorJid.get(senderJid) || nomePorJid.get(String(m?.chat_jid || jid)) || "Remetente";
+          const pushName = pushNameHistorico(m);
+          const pessoaNome = pessoaPorPushName(pushName);
+          const autorizado = authorizedHistoryPhones().has(phone) ||
+            authorizedHistoryJids().has(senderJid) ||
+            authorizedHistoryJids().has(String(m?.chat_jid || jid)) ||
+            !!pessoaNome;
+          if (!autorizado) continue;
+          const pessoa = nomePorPhone.get(phone) || nomePorJid.get(senderJid) || nomePorJid.get(String(m?.chat_jid || jid)) || pessoaNome || "Remetente";
           const dedupe = id || [pessoa, m?.timestamp || "", m?.message_type || "", m?.text_content || ""].join("|");
           if (vistos.has(dedupe)) continue;
           vistos.add(dedupe);
