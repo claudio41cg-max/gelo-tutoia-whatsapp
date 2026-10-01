@@ -31,7 +31,7 @@ const GELO_INBOX_URL = String(process.env.GELO_INBOX_URL || "https://gelo-tutoia
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
-if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: true, manualMode: false }, null, 2));
+if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: false, manualMode: true }, null, 2));
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
 
 function readClients() {
@@ -44,13 +44,13 @@ function writeClients(clients) {
 function readExternalState() {
   try {
     const state = JSON.parse(fs.readFileSync(EXTERNAL_STATE_FILE, "utf8") || "{}");
-    return { aiEnabled: state.aiEnabled !== false, manualMode: !!state.manualMode };
+    return { aiEnabled: state.aiEnabled === true, manualMode: state.manualMode !== false };
   } catch {
-    return { aiEnabled: true, manualMode: false };
+    return { aiEnabled: false, manualMode: true };
   }
 }
 function writeExternalState(state) {
-  const clean = { aiEnabled: state.aiEnabled !== false, manualMode: !!state.manualMode };
+  const clean = { aiEnabled: state.aiEnabled === true, manualMode: state.manualMode !== false };
   fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify(clean, null, 2));
   return clean;
 }
@@ -258,8 +258,8 @@ async function ensureSeedClient() {
     name,
     phone: SEED_CLIENT_PHONE,
     businessName,
-    aiEnabled: true,
-    manualMode: false,
+    aiEnabled: false,
+    manualMode: true,
     connected: false,
     loggedIn: false,
     token: SEED_CLIENT_TOKEN,
@@ -800,7 +800,7 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
     if (internalSaleSender) {
       console.log("Mensagem interna/de teste: não responder com agente de clientes.", senderPhone);
     }
-    if (state.aiEnabled && !state.manualMode && isIncoming && isPrivateChat && !internalSaleSender && senderPhone && String(text || "").trim()) {
+    if (state.aiEnabled === true && state.manualMode === false && isIncoming && isPrivateChat && !internalSaleSender && senderPhone && String(text || "").trim()) {
       let body = "";
       try {
         body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
