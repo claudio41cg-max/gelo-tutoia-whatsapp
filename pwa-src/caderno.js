@@ -83,7 +83,7 @@
   function adicionarInicio(){
     try{
       const div=C();if(!div||div.querySelector('#gt-caderno-btn'))return;
-      const b=document.createElement('button');b.id='gt-caderno-btn';b.className='act-btn btn-rel';b.textContent='📒 CADERNO DE VENDAS';b.onclick=telaCadernoVendas;
+      const b=document.createElement('button');b.id='gt-caderno-btn';b.className='act-btn';b.style.cssText='background:linear-gradient(135deg,#7a5424,#b9862f);border:2px solid #d3aa52;color:#fff';b.textContent='📒 CADERNO DE VENDAS';b.onclick=telaCadernoVendas;
       const cfg=[...div.querySelectorAll('button')].find(x=>/CONFIGURAÇÕES/i.test(x.textContent||''));if(cfg)div.insertBefore(b,cfg);else div.appendChild(b);
     }catch(e){}
   }
