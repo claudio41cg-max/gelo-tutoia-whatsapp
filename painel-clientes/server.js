@@ -1046,7 +1046,7 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
   if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && !isManagedBusinessSender && senderPhone && String(text || "").trim()) {
     let body = "";
     try {
-      body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
+      body = await gerarRespostaIA(String(text || "").trim(), senderPhone, c);
     } catch (e) {
       console.error("Falha ao gerar resposta IA:", e?.message || e);
       return res.json({ ok: true, autoReply: false, aiError: e?.message || "Falha na IA" });
