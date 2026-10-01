@@ -744,6 +744,42 @@ async function logTafarelTodayOnce() {
   }
 }
 
+async function enableGeloHistoryOnce() {
+  try {
+    const business = await findExistingBusinessUser();
+    const id = String(business?.id || business?.ID || "").trim();
+    if (!id) {
+      console.log("HISTORY_ENABLE_RESULT", JSON.stringify({ok:false,erro:"gelo-tutoia não encontrado"}));
+      return;
+    }
+    const before = await wuz("/admin/users/" + encodeURIComponent(id), { headers: adminHeaders() });
+    const arr = Array.isArray(before?.data) ? before.data : [];
+    const current = arr[0] || business || {};
+    const previous = Number(current?.history || current?.History || 0);
+
+    await wuz("/admin/users/" + encodeURIComponent(id), {
+      method:"PUT",
+      headers:adminHeaders(true),
+      body:JSON.stringify({history:1000})
+    });
+
+    const after = await wuz("/admin/users/" + encodeURIComponent(id), { headers: adminHeaders() });
+    const arr2 = Array.isArray(after?.data) ? after.data : [];
+    const now = arr2[0] || {};
+    console.log("HISTORY_ENABLE_RESULT", JSON.stringify({
+      ok:true,
+      id,
+      nome:now?.name || current?.name || "gelo-tutoia",
+      antes:previous,
+      depois:Number(now?.history || now?.History || 0),
+      connected:!!(now?.connected ?? now?.Connected ?? current?.connected ?? current?.Connected),
+      loggedIn:!!(now?.loggedIn ?? now?.LoggedIn ?? current?.loggedIn ?? current?.LoggedIn)
+    }));
+  } catch (e) {
+    console.log("HISTORY_ENABLE_RESULT", JSON.stringify({ok:false,erro:String(e?.message||e),status:e?.status||null}));
+  }
+}
+
 async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
@@ -752,6 +788,8 @@ async function start() {
   catch (e) { console.error("Falha ao configurar webhooks:", e?.message || e); }
   try { await configureExistingBusinessWebhook(); }
   catch (e) { console.error("Falha ao ligar webhook do WhatsApp Business:", e?.message || e); }
+  try { await enableGeloHistoryOnce(); }
+  catch (e) { console.error("Falha ao ativar histórico WuzAPI:", e?.message || e); }
   try { await logTafarelTodayOnce(); }
   catch (e) { console.error("Falha na verificação do agente Tafarel:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
