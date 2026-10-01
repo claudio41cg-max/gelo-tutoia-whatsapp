@@ -1304,13 +1304,38 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
         .replace(/@.*/, "")
         .replace(/\D/g, "");
       if (businessJid && recipientPhone === businessJid) {
+        const forwardedPhone=String(c.phone || "").replace(/\D/g, "");
+        const forwardedId=String(info?.ID || info?.Id || info?.id || ("relay-"+Date.now()));
+        const forwardedTs=String(info?.Timestamp || new Date().toISOString());
+        const forwardedText=String(text || "").trim();
+
+        // Guarda uma cópia autorizada no Railway antes do Worker.
+        // Assim o app continua recebendo vendas mesmo se o Cloudflare KV estiver indisponível
+        // e sem depender do LID interno que aparece no WhatsApp de destino.
+        if (forwardedPhone && forwardedText) {
+          appendWuzapiHistory({
+            message_id:forwardedId,
+            timestamp:forwardedTs,
+            pessoa:String(c.businessName || c.name || "Remetente"),
+            sender_jid:forwardedPhone+"@s.whatsapp.net",
+            sender_alt:forwardedPhone+"@s.whatsapp.net",
+            chat_jid:forwardedPhone+"@s.whatsapp.net",
+            tipo:String(info?.Type || "text"),
+            texto:forwardedText,
+            transcricao:forwardedText,
+            is_from_me:false,
+            is_group:false,
+            origem:"relay-local"
+          });
+        }
+
         await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...payload,
             forwardedToGeloTest: true,
-            forwardedTestSenderPhone: String(c.phone || "").replace(/\D/g, "")
+            forwardedTestSenderPhone: forwardedPhone
           })
         });
         console.log("Teste enviado ao Gelo Tutóia a partir de", c.businessName || c.name);
