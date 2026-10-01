@@ -4,6 +4,27 @@
   const PANEL_INBOX_API='https://painel-clientes-production.up.railway.app/api/gelo/inbox';
   const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
   const GT_RESET_CUTOFF_KEY='gelo_tutoia_reset_cutoff_v1';
+  const GT_IGNORED_REMOTE_IDS_KEY='gelo_tutoia_ignored_remote_ids_v1';
+  function idsIgnorados(){
+    try{return new Set(JSON.parse(localStorage.getItem(GT_IGNORED_REMOTE_IDS_KEY)||'[]').map(String))}catch{return new Set()}
+  }
+  function salvarIdsIgnorados(set){
+    try{localStorage.setItem(GT_IGNORED_REMOTE_IDS_KEY,JSON.stringify([...set].slice(-4000)))}catch(e){}
+  }
+  function ignorarIdsAtuais(){
+    const set=idsIgnorados();
+    for(const v of vendasRecebidas||[])if(v?.remoteId)set.add(String(v.remoteId));
+    for(const lista of Object.values(S?.vpc||{}))for(const v of Array.isArray(lista)?lista:[])if(v?.remoteId)set.add(String(v.remoteId));
+    salvarIdsIgnorados(set);
+  }
+  function removerIdsIgnorados(){
+    const set=idsIgnorados();if(!set.size)return;
+    let mudou=false;
+    for(let i=vendasRecebidas.length-1;i>=0;i--){
+      if(set.has(String(vendasRecebidas[i]?.remoteId||''))){vendasRecebidas.splice(i,1);mudou=true}
+    }
+    if(mudou)salvarInbox();
+  }
   function resetCutoff(){const n=Number(localStorage.getItem(GT_RESET_CUTOFF_KEY)||0);return Number.isFinite(n)?n:0}
   function antesDoCorte(iso){const t=new Date(iso||0).getTime();return !!t&&t<=resetCutoff()}
   function limparAntesDoCorte(){
@@ -23,6 +44,7 @@
     btn.onclick=()=>{
       confirmar('Reiniciar o dia?','Todos os dados do dia serão apagados e vendas antigas do WhatsApp não voltarão. Tem certeza?','Sim, reiniciar',()=>{
         const corteAgora=Date.now();
+        ignorarIdsAtuais();
         localStorage.setItem(GT_RESET_CUTOFF_KEY,String(corteAgora));
         vendasRecebidas.splice(0,vendasRecebidas.length);
         salvarInbox();
@@ -111,6 +133,7 @@
       // Só vendas novas e ainda pendentes podem entrar automaticamente no movimento do dia.
       // Itens que já estão em Confirmadas servem apenas como histórico e nunca são relançados.
       if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
+      if(idsIgnorados().has(String(v.remoteId)))continue;
       if(!vendaLocalValida(v))continue;
 
       if(!jaLancada(v.remoteId)){
@@ -196,6 +219,15 @@
   let syncRapidoEmAndamento=false;
   setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},150);
   setTimeout(()=>{try{sincronizarInboxRemoto(false)}catch(e){}},1800);
+  function clienteDinamicoNoTexto(texto){
+    const n=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+    const t=' '+n(texto)+' ';
+    const nomes=(CLIENTES||[]).slice().sort((a,b)=>n(b).length-n(a).length);
+    for(const nome of nomes){
+      const nn=n(nome); if(nn && t.includes(' '+nn+' '))return nome;
+    }
+    return '';
+  }
   async function sincronizarViaHistoricoLocal(mostrarAviso){
     try{
       const corte=resetCutoff();
@@ -209,11 +241,24 @@
         if(resetCutoff() && (!msgMs || msgMs<=resetCutoff()))continue;
         const texto=String(m?.texto||'').trim();
         if(!texto)continue;
-        const vendas=typeof interpretarLinhaVenda==='function'?interpretarLinhaVenda(texto):[];
+        let vendas=typeof interpretarLinhaVenda==='function'?interpretarLinhaVenda(texto):[];
+        if((!Array.isArray(vendas)||!vendas.some(v=>v?.ok))&&clienteDinamicoNoTexto(texto)){
+          const cli=clienteDinamicoNoTexto(texto);
+          const nt=String(texto).toLowerCase();
+          const qm=nt.match(/\b(\d{1,3})\s*(?:saco|sacos)?\b/);
+          const qtd=qm?Number(qm[1]):0;
+          const tipo=/filtrad/.test(nt)?'filt':/escam/.test(nt)?'esc':'';
+          const pag=/\bpix\b/.test(nt)?'PIX':/\b(fiando|fiado)\b/.test(nt)?'Fiado':/\b(pago|pagou|dinheiro)\b/.test(nt)?'Dinheiro':'Não informado';
+          if(cli&&qtd>0&&tipo){
+            const preco=precoVendaRemota(cli,tipo);
+            vendas=[{ok:true,cliente:cli,qtd,tipo,pag,preco,valor:qtd*preco}];
+          }
+        }
         let idx=0;
         for(const v of vendas){
           if(!v?.ok){ignoradas++;continue}
           const remoteId='railway-'+String(m?.message_id||m?.timestamp||Date.now())+'-'+(idx++);
+          if(idsIgnorados().has(remoteId))continue;
           if(vendasRecebidas.some(x=>String(x?.remoteId||'')===remoteId))continue;
           const criadoEm=String(m?.timestamp||new Date().toISOString());
           vendasRecebidas.push({
@@ -301,6 +346,7 @@
       if(!resultado?.ok)resultado=await sincronizarViaPainel(mostrarAviso);
       if(resultado?.ok){
         limparAntesDoCorte();
+        removerIdsIgnorados();
         const total=integrar();
         for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
           await marcarStatusRemoto(v,'confirmada_app');
