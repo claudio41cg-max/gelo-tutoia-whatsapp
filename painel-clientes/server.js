@@ -1210,6 +1210,47 @@ async function enableGeloHistoryOnce() {
   }
 }
 
+
+async function logSalesWindowOnce() {
+  try {
+    const r = await fetch(GELO_INBOX_URL, { headers: { Accept: "application/json" } });
+    const d = await r.json().catch(() => ({}));
+    const arr = Array.isArray(d?.vendas) ? d.vendas : [];
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false });
+    const out = [];
+    for (const v of arr) {
+      const iso = String(v?.recebido_em || "");
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) continue;
+      const parts = Object.fromEntries(fmt.formatToParts(dt).map(x => [x.type,x.value]));
+      const date = `${parts.year}-${parts.month}-${parts.day}`;
+      const hhmmss = `${parts.hour}:${parts.minute}:${parts.second}`;
+      if (date !== "2026-10-01") continue;
+      if (hhmmss < "08:00:00" || hhmmss > "12:00:00") continue;
+      out.push({
+        horario: hhmmss,
+        cliente: v?.cliente || "",
+        qtd: Number(v?.qtd || 0),
+        tipo: v?.tipo || "",
+        pagamento: v?.pagamento || "Não informado",
+        transcricao: v?.transcricao || "",
+        confianca: v?.confianca || ""
+      });
+    }
+    out.sort((a,b)=>a.horario.localeCompare(b.horario));
+    const totals = out.reduce((a,v)=>{
+      a.vendas += 1;
+      a.sacos += Number(v.qtd||0);
+      if (v.tipo === "esc") a.escamas += Number(v.qtd||0);
+      if (v.tipo === "filt") a.filtrado += Number(v.qtd||0);
+      return a;
+    },{vendas:0,sacos:0,escamas:0,filtrado:0});
+    console.log("SALES_WINDOW_2026_10_01_08_12", JSON.stringify({out,totals}));
+  } catch (e) {
+    console.log("SALES_WINDOW_2026_10_01_08_12", JSON.stringify({erro:String(e?.message||e)}));
+  }
+}
+
 async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
@@ -1224,6 +1265,8 @@ async function start() {
   catch (e) { console.error("Falha ao ativar histórico WuzAPI:", e?.message || e); }
   try { await logTafarelTodayOnce(); }
   catch (e) { console.error("Falha na verificação do agente Tafarel:", e?.message || e); }
+  try { await logSalesWindowOnce(); }
+  catch (e) { console.error("Falha no diagnóstico de vendas por faixa:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
   });
