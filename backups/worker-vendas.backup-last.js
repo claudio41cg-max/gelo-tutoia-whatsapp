@@ -74,6 +74,9 @@ async function listarInbox(env){
     for(const nome of unicos){
       const r=await env.VENDAS.get(nome,{type:"json"});
       if(r?.venda)out.push(...itensVendaDoRegistro(nome,r));
+      else if(String(nome).startsWith("mensagem:DIAG-")&&r?.transcricao){
+        out.push({remote_key:nome,remote_id:nome+":diag",cliente:"",qtd:0,tipo:"diag",pagamento:"Não informado",transcricao:r.transcricao,confianca:r.status||""});
+      }
     }
     return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)));
   }
@@ -84,6 +87,9 @@ async function listarInbox(env){
     for(const k of p.keys){
       const r=await env.VENDAS.get(k.name,{type:"json"});
       if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r));
+      else if(String(k.name).startsWith("mensagem:DIAG-")&&r?.transcricao){
+        out.push({remote_key:k.name,remote_id:k.name+":diag",cliente:"",qtd:0,tipo:"diag",pagamento:"Não informado",transcricao:r.transcricao,confianca:r.status||""});
+      }
       if(dataSaoPaulo(r?.recebido_em||r?.interpretado_em||r?.atualizado_em)===hoje)indexHoje.push(k.name);
     }
     cursor=p.list_complete?undefined:p.cursor;
