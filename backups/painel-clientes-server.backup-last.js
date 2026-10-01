@@ -60,9 +60,35 @@ function readWuzapiHistory() {
     return Array.isArray(arr) ? arr : [];
   } catch { return []; }
 }
+function authorizedHistoryPhones() {
+  return new Set([
+    String(SEED_CLIENT_PHONE || "").replace(/\D/g, ""),
+    HELPER_TAFA_PHONE,
+    HELPER_MAIRA_PHONE,
+    ...INTERNAL_SALE_SENDERS
+  ].filter(Boolean));
+}
+function authorizedHistoryJids() {
+  return new Set([
+    HELPER_TAFA_JID,
+    HELPER_MAIRA_JID
+  ].filter(Boolean));
+}
+function isAuthorizedHistoryEntry(entry) {
+  if (!entry || entry.is_group === true || entry.is_from_me === true) return false;
+  const phone = String(entry.sender_alt || entry.sender_jid || "")
+    .replace(/@.*/, "")
+    .replace(/\D/g, "");
+  const senderJid = String(entry.sender_jid || "");
+  const chatJid = String(entry.chat_jid || "");
+  return authorizedHistoryPhones().has(phone) ||
+    authorizedHistoryJids().has(senderJid) ||
+    authorizedHistoryJids().has(chatJid);
+}
 function appendWuzapiHistory(entry) {
+  if (!isAuthorizedHistoryEntry(entry)) return;
   const id = String(entry?.message_id || "").trim();
-  const all = readWuzapiHistory();
+  const all = readWuzapiHistory().filter(isAuthorizedHistoryEntry);
   if (id && all.some(x => String(x?.message_id || "") === id)) return;
   all.push(entry);
   const recent = all.slice(-5000);
@@ -284,78 +310,40 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     const token = String(business?.token || business?.Token || "").trim();
     if (!token) return res.status(503).json({ error: "WhatsApp principal sem acesso ao histórico" });
 
-    const businessJid = String(business?.jid || business?.Jid || business?.JID || "").trim();
-    const businessPhone = businessJid.replace(/@.*/, "").replace(/\D/g, "");
-    const businessId = String(business?.id || business?.ID || business?.user_id || business?.userID || "").trim();
+    const ownerPhone = String(SEED_CLIENT_PHONE || "").replace(/\D/g, "");
 
     const pessoas = [
+      { nome:"Cláudio", phone:ownerPhone, jids:ownerPhone ? [ownerPhone + "@s.whatsapp.net"] : [] },
       { nome:"Tafarel", phone:HELPER_TAFA_PHONE, jids:helperJidsByName("Tafarel") },
       { nome:"Maíra", phone:HELPER_MAIRA_PHONE, jids:helperJidsByName("Maíra") }
     ].filter(p=>p.phone && p.jids.length);
 
     const nomePorJid = new Map();
+    const nomePorPhone = new Map();
     for (const p of pessoas) {
       for (const jid of p.jids) nomePorJid.set(String(jid), p.nome);
-      if (p.phone) nomePorJid.set(p.phone + "@s.whatsapp.net", p.nome);
+      if (p.phone) {
+        nomePorPhone.set(p.phone,p.nome);
+        nomePorJid.set(p.phone + "@s.whatsapp.net", p.nome);
+      }
     }
 
-    function pushNameHistorico(m) {
-      let raw = m?.data_json ?? m?.datajson ?? "";
-      if (!raw) return "";
-      try {
-        if (typeof raw === "string") raw = JSON.parse(raw);
-      } catch { return ""; }
-      const fila = [raw];
-      let passos = 0;
-      while (fila.length && passos++ < 80) {
-        const x = fila.shift();
-        if (!x || typeof x !== "object") continue;
-        for (const [k,v] of Object.entries(x)) {
-          if (/^(pushname|push_name|pushName)$/i.test(k) && typeof v === "string" && v.trim()) return v.trim();
-          if (v && typeof v === "object") fila.push(v);
-        }
-      }
-      return "";
-    }
-
-    const jids = new Set([
-      businessJid,
-      businessPhone ? businessPhone + "@s.whatsapp.net" : "",
-      ...pessoas.flatMap(p=>p.jids)
-    ].filter(Boolean));
-
-    try {
-      const idxResp = await wuz("/chat/history?chat_jid=index", { headers:userHeaders(token) });
-      let payload = idxResp?.data ?? idxResp;
-      if (typeof payload === "string") {
-        try { payload = JSON.parse(payload); } catch {}
-      }
-      const chats = businessId && payload && typeof payload === "object" && !Array.isArray(payload)
-        ? (Array.isArray(payload[businessId]) ? payload[businessId] : [])
-        : [];
-      for (const ch of chats.slice(0, 250)) {
-        const jid = String(ch?.chat_jid || "").trim();
-        const last = String(ch?.last_updated || ch?.last_message_time || "");
-        if (!jid) continue;
-        if (!last || localDate(last) >= targetDate) jids.add(jid);
-      }
-    } catch (e) {
-      console.error("Falha ao descobrir conversas do histórico WuzAPI:", e?.message || e);
-    }
+    const jids = new Set(pessoas.flatMap(p=>p.jids).filter(Boolean));
 
     const historico = [];
     const vistos = new Set();
 
-    for (const m of readWuzapiHistory()) {
-      if (m?.is_group) continue;
+    for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
       if (localDate(m?.timestamp) !== targetDate) continue;
       const id = String(m?.message_id || "");
-      const dedupe = id || [m?.pessoa || "", m?.timestamp || "", m?.tipo || "", m?.texto || ""].join("|");
+      const phone = String(m?.sender_alt || m?.sender_jid || "").replace(/@.*/, "").replace(/\D/g, "");
+      const pessoa = nomePorPhone.get(phone) || nomePorJid.get(String(m?.sender_jid || "")) || String(m?.pessoa || "Remetente");
+      const dedupe = id || [pessoa, m?.timestamp || "", m?.tipo || "", m?.texto || ""].join("|");
       if (vistos.has(dedupe)) continue;
       vistos.add(dedupe);
       historico.push({
-        pessoa:String(m?.pessoa || "Remetente"),
-        phone:String(m?.sender_alt || m?.sender_jid || "").replace(/@.*/, "").replace(/\D/g, ""),
+        pessoa,
+        phone,
         message_id:id,
         timestamp:m?.timestamp || "",
         message_type:m?.tipo || "",
@@ -374,10 +362,9 @@ app.get("/api/agent/historico-dia", async (req, res) => {
           if (localDate(m?.timestamp) !== targetDate) continue;
           const id = String(m?.message_id || "");
           const senderJid = String(m?.sender_jid || "");
-          const pushName = pushNameHistorico(m);
-          const pessoa = nomePorJid.get(senderJid) || nomePorJid.get(String(m?.chat_jid || jid)) ||
-            (/claudio/i.test(pushName.normalize("NFD").replace(/[\u0300-\u036f]/g,"")) ? "Cláudio" : pushName || "Remetente");
           const phone = senderJid.replace(/@.*/, "").replace(/\D/g, "");
+          if (!authorizedHistoryPhones().has(phone) && !authorizedHistoryJids().has(senderJid) && !authorizedHistoryJids().has(String(m?.chat_jid || jid))) continue;
+          const pessoa = nomePorPhone.get(phone) || nomePorJid.get(senderJid) || nomePorJid.get(String(m?.chat_jid || jid)) || "Remetente";
           const dedupe = id || [pessoa, m?.timestamp || "", m?.message_type || "", m?.text_content || ""].join("|");
           if (vistos.has(dedupe)) continue;
           vistos.add(dedupe);
