@@ -1041,7 +1041,8 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     console.error("Falha ao encaminhar teste para o Gelo Tutóia:", e?.message || e);
   }
 
-  const isManagedBusinessSender = senderPhone === "5521981378219";
+  const clientOwnPhone = String(c?.phone || "").replace(/\D/g, "");
+  const isManagedBusinessSender = !!senderPhone && senderPhone === clientOwnPhone;
   if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && !isManagedBusinessSender && senderPhone && String(text || "").trim()) {
     let body = "";
     try {
