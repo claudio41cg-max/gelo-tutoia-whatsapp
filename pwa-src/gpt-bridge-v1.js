@@ -98,12 +98,16 @@ function buildPrompt(payload={}){
   const message=String(payload.message||payload.pergunta||'').trim();
   const contexto=payload.contexto||payload.context||null;
   const linhas=[
-    'Você é o agente operacional do aplicativo Gelo Tutóia.',
-    'Seu trabalho é entender mensagens de WhatsApp de ajudantes e do proprietário, separar venda concluída de aviso, tentativa, correção, observação ou conversa comum e responder com base apenas nos dados fornecidos.',
+    'Você é o agente operacional interno do aplicativo Gelo Tutóia.',
+    'As mensagens analisadas são registros internos de vendas enviados por Cláudio, Tafarel e Maíra. NÃO trate essas mensagens como atendimento ao cliente e NÃO faça perguntas de endereço, horário, confirmação de pedido ou finalização.',
+    'Extraia somente o que interessa para a venda: cliente ou apelido do ponto, quantidade, pagamento e tipo/tamanho de gelo apenas quando isso realmente estiver explícito ou for necessário.',
+    'Se o cadastro do sistema já associa o cliente a um produto/preço, não exija que o ajudante repita o tipo de gelo. Exemplo: uma fala longa como "o Marcelo estava fechado, deixei dois no freezer, foi Pix" deve ser resumida como Marcelo — 2 — PIX.',
+    'Considere apelidos diferentes como possíveis nomes do mesmo ponto quando os dados do sistema indicarem isso. Nunca crie um novo cliente só porque o ajudante usou outro apelido.',
+    'Ignore detalhes operacionais sem efeito financeiro, como portão, freezer, barraca fechada, localização física ou conversa paralela.',
     'Nunca invente venda, quantidade, pagamento, cliente ou entrega.',
-    'Quando houver dúvida relevante, diga claramente que precisa de confirmação.',
-    'Considere o contexto da conversa: uma visita não concluída não é venda; uma venda só deve ser tratada como concluída quando a mensagem indicar entrega/saída efetiva.',
-    'Quando solicitado relatório, organize em ordem cronológica e some quantidades/valores apenas quando os dados permitirem.',
+    'Quando houver dúvida relevante, marque como precisa de confirmação; não interrogue o ajudante.',
+    'Uma visita não concluída não é venda; uma venda concluída exige indicação de entrega/saída efetiva.',
+    'Quando solicitado relatório, responda como bloco de notas, em ordem cronológica, e some quantidades/valores apenas quando os dados permitirem.',
     contexto?'DADOS DO SISTEMA:\n'+JSON.stringify(contexto):'',
     'PEDIDO DO USUÁRIO:\n'+message
   ].filter(Boolean);
@@ -147,6 +151,29 @@ function dataLocalISO(d=new Date()){
   return `${v.year}-${v.month}-${v.day}`;
 }
 
+function resolverFaixaHorario(texto=''){
+  const t=String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(/\b(meio[- ]?dia|12\s*h(?:oras?)?)\b/.test(t)&&/\b(8|08)\s*h?(?:oras?)?\b/.test(t))return {inicio:'08:00:00',fim:'12:00:00'};
+  const m=t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(?:h|horas?)?\s*(?:ate|a|as|às|-)\s*(\d{1,2})(?::(\d{2}))?\s*(?:h|horas?)?\b/);
+  if(!m)return null;
+  const h1=Math.max(0,Math.min(23,Number(m[1]))),m1=Math.max(0,Math.min(59,Number(m[2]||0)));
+  const h2=Math.max(0,Math.min(23,Number(m[3]))),m2=Math.max(0,Math.min(59,Number(m[4]||0)));
+  return {inicio:String(h1).padStart(2,'0')+':'+String(m1).padStart(2,'0')+':00',fim:String(h2).padStart(2,'0')+':'+String(m2).padStart(2,'0')+':59'};
+}
+function horaLocalISO(iso=''){
+  const d=new Date(iso); if(Number.isNaN(d.getTime()))return '';
+  const p=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(d);
+  const v=Object.fromEntries(p.map(x=>[x.type,x.value]));
+  return (v.hour||'00')+':'+(v.minute||'00')+':'+(v.second||'00');
+}
+function filtrarFaixa(arr,faixa,campo){
+  if(!faixa||!Array.isArray(arr))return Array.isArray(arr)?arr:[];
+  return arr.filter(x=>{
+    const h=horaLocalISO(x&&x[campo]);
+    return h&&h>=faixa.inicio&&h<=faixa.fim;
+  });
+}
+
 function resolverDataPedido(texto=''){
   const t=String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const now=new Date();
@@ -187,17 +214,22 @@ async function historicoDia(data='',retry=true){
 
 async function relatorioDia(data='',pedido=''){
   const historico=await historicoDia(data);
+  const faixa=resolverFaixaHorario(pedido);
+  const mensagens=filtrarFaixa(Array.isArray(historico.mensagens)?historico.mensagens:[],faixa,'recebido_em');
+  const vendas=filtrarFaixa(Array.isArray(historico.vendas)?historico.vendas:[],faixa,'recebido_em');
+  const faixaTexto=faixa?(' Considere somente o intervalo '+faixa.inicio.slice(0,5)+'–'+faixa.fim.slice(0,5)+'.'):'';
   const mensagem=String(pedido||'').trim()||
-    'Analise todas as mensagens deste dia, independentemente de quem trabalhou. Identifique automaticamente quem enviou cada mensagem ou áudio. Separe vendas concluídas, avisos, tentativas não concluídas, correções e conversa comum. Gere um relatório curto em formato de bloco de notas, em ordem cronológica, e some quantidades e valores somente quando houver dados suficientes. Não invente nada.';
+    ('Analise os registros internos de venda deste dia.'+faixaTexto+' Para cada venda, reduza falas longas ao essencial: cliente, quantidade, pagamento e produto somente quando necessário. Não faça perguntas de atendimento. Gere um relatório curto em formato de bloco de notas, em ordem cronológica, com totais quando os dados permitirem. Não invente nada.');
   const contexto={
     data:String(historico.data||data||''),
+    faixa:faixa||null,
     pessoas:Array.isArray(historico.pessoas)?historico.pessoas:[],
-    mensagens:Array.isArray(historico.mensagens)?historico.mensagens:[],
-    vendas:Array.isArray(historico.vendas)?historico.vendas:[],
-    mensagens_historico:Number(historico.mensagens_historico||0)
+    mensagens,
+    vendas,
+    mensagens_historico:mensagens.length
   };
   const resultado=await ask({message:mensagem,contexto});
-  return {...resultado,historico};
+  return {...resultado,historico:{...historico,mensagens,vendas,mensagens_historico:mensagens.length,faixa}};
 }
 
 async function relatorioPorPedido(pedido=''){
@@ -242,6 +274,7 @@ window.GeloTutoiaGPT={
   ask,
   auth:token,
   resolverDataPedido,
+  resolverFaixaHorario,
   historicoDia,
   relatorioDia,
   relatorioPorPedido,
