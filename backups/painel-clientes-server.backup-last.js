@@ -645,6 +645,37 @@ app.post("/api/clients/:id/disconnect", async (req, res) => {
   }
 });
 
+async function logTafarelTodayOnce() {
+  try {
+    if (!HELPER_TAFA_PHONE) return;
+    const r = await fetch(GELO_INBOX_URL, { headers: { "Accept": "application/json" } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d?.ok || !Array.isArray(d?.vendas)) {
+      console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:false, erro:"inbox indisponivel" }));
+      return;
+    }
+    const alvo = "2026-09-30";
+    const vendas = d.vendas.filter(v => {
+      const remetente = String(v?.remetente || "").replace(/\D/g, "");
+      const dt = new Date(v?.recebido_em);
+      if (Number.isNaN(dt.getTime())) return false;
+      const dia = [dt.getFullYear(), String(dt.getMonth()+1).padStart(2,"0"), String(dt.getDate()).padStart(2,"0")].join("-");
+      return remetente === HELPER_TAFA_PHONE && dia === alvo;
+    }).map(v => ({
+      recebido_em:v.recebido_em,
+      transcricao:v.transcricao,
+      cliente:v.cliente,
+      qtd:v.qtd,
+      tipo:v.tipo,
+      pagamento:v.pagamento,
+      confianca:v.confianca
+    })).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
+    console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:true, data:alvo, total:vendas.length, vendas }));
+  } catch (e) {
+    console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:false, erro:String(e?.message||e) }));
+  }
+}
+
 async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
@@ -653,6 +684,8 @@ async function start() {
   catch (e) { console.error("Falha ao configurar webhooks:", e?.message || e); }
   try { await configureExistingBusinessWebhook(); }
   catch (e) { console.error("Falha ao ligar webhook do WhatsApp Business:", e?.message || e); }
+  try { await logTafarelTodayOnce(); }
+  catch (e) { console.error("Falha na verificação do agente Tafarel:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
   });
