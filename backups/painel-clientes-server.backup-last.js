@@ -1210,6 +1210,52 @@ async function enableGeloHistoryOnce() {
   }
 }
 
+
+async function logLucianoWindowTodayOnce() {
+  try {
+    const business = await findExistingBusinessUser();
+    const token = String(business?.token || business?.Token || "").trim();
+    if (!token) {
+      console.log("LUCIANO_WINDOW_TODAY", JSON.stringify({ok:false,erro:"sem token"}));
+      return;
+    }
+    const jids = helperJidsByName("Tafarel");
+    const all = [];
+    const seen = new Set();
+    for (const jid of jids) {
+      try {
+        const h = await wuz("/chat/history?chat_jid=" + encodeURIComponent(jid) + "&limit=1000", { headers:userHeaders(token) });
+        const arr = Array.isArray(h?.data) ? h.data : Array.isArray(h) ? h : [];
+        for (const m of arr) {
+          const id = String(m?.message_id || "");
+          if (id && seen.has(id)) continue;
+          const d = new Date(m?.timestamp);
+          if (Number.isNaN(d.getTime())) continue;
+          const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+            timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit",
+            hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false
+          }).formatToParts(d).map(x=>[x.type,x.value]));
+          const date = `${parts.year}-${parts.month}-${parts.day}`;
+          const time = `${parts.hour}:${parts.minute}:${parts.second}`;
+          if (date !== "2026-10-01" || time < "08:00:00" || time > "12:00:00") continue;
+          if (id) seen.add(id);
+          all.push({
+            horario: time,
+            tipo: String(m?.message_type || ""),
+            texto: String(m?.text_content || m?.caption || m?.body || "").trim() || "[áudio/media sem transcrição]"
+          });
+        }
+      } catch (e) {
+        console.log("LUCIANO_WINDOW_TODAY_ERROR", String(e?.message||e));
+      }
+    }
+    all.sort((a,b)=>a.horario.localeCompare(b.horario));
+    console.log("LUCIANO_WINDOW_TODAY", JSON.stringify({ok:true,mensagens:all}));
+  } catch (e) {
+    console.log("LUCIANO_WINDOW_TODAY", JSON.stringify({ok:false,erro:String(e?.message||e)}));
+  }
+}
+
 async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
@@ -1224,6 +1270,8 @@ async function start() {
   catch (e) { console.error("Falha ao ativar histórico WuzAPI:", e?.message || e); }
   try { await logTafarelTodayOnce(); }
   catch (e) { console.error("Falha na verificação do agente Tafarel:", e?.message || e); }
+  try { await logLucianoWindowTodayOnce(); }
+  catch (e) { console.error("Falha no diagnóstico Luciano 8-12:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
   });
