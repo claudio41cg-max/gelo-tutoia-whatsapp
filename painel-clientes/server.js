@@ -28,6 +28,9 @@ const HELPER_MAIRA_PHONE = String(process.env.HELPER_MAIRA_PHONE || "").replace(
 const HELPER_TAFA_JID = String(process.env.HELPER_TAFA_JID || "").trim();
 const HELPER_MAIRA_JID = String(process.env.HELPER_MAIRA_JID || "").trim();
 const GELO_INBOX_URL = String(process.env.GELO_INBOX_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/inbox");
+const SALON_SEED_NAME = String(process.env.SALON_SEED_NAME || "").trim();
+const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || "").trim();
+const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -276,6 +279,106 @@ async function ensureSeedClient() {
   });
   writeClients(clients);
   console.log("Cliente de teste preparado:", businessName, SEED_CLIENT_PHONE);
+}
+
+
+function salonPromptPadrao(nomeSalao) {
+  const nome = String(nomeSalao || "Salão").trim() || "Salão";
+  return `Você é a atendente virtual de vendas e agendamentos do ${nome}.
+
+OBJETIVO:
+Atender clientes pelo WhatsApp, entender o que desejam, tirar dúvidas, apresentar serviços e conduzir naturalmente até o agendamento.
+
+TOM:
+- Português do Brasil.
+- Simpática, acolhedora, natural e objetiva.
+- Mensagens curtas.
+- Uma pergunta de cada vez.
+- Não pareça robô.
+- Nunca invente preço, horário, serviço ou profissional.
+
+PRIMEIRO CONTATO:
+Cumprimente de forma natural e pergunte como pode ajudar.
+Exemplo: "Oi 😊 Seja bem-vinda ao ${nome}. Como posso te ajudar hoje?"
+
+SERVIÇOS E PREÇOS:
+Use somente os serviços e preços informados pelo salão.
+Se o valor depender do tamanho, volume ou condição do cabelo, explique que pode variar e faça as perguntas necessárias.
+Nunca invente valor.
+
+AGENDAMENTO:
+Antes de confirmar, obtenha nome da cliente, serviço, dia, horário ou período desejado e profissional de preferência, se houver.
+Nunca confirme horário sem ter informação de disponibilidade.
+Se não houver agenda integrada, diga que a equipe vai confirmar o horário.
+
+VENDA COMPLEMENTAR:
+Pode sugerir no máximo um serviço complementar que faça sentido, sem insistência.
+
+QUÍMICAS:
+Não garanta resultado. Quando necessário, recomende avaliação presencial.
+
+HORÁRIO INDISPONÍVEL:
+Ofereça outro horário, outro dia, outro profissional ou lista de espera.
+
+ATENDIMENTO HUMANO:
+Encaminhe para uma pessoa quando houver reclamação, dúvida não cadastrada, situação sensível, orçamento que dependa de avaliação ou quando a cliente pedir.
+
+REGRA PRINCIPAL:
+O objetivo é transformar interesse em agendamento de forma natural e sem pressão. Nunca invente informações.`;
+}
+
+async function ensureSalonSeedClient() {
+  const phone = String(SALON_SEED_PHONE || "").replace(/\D/g, "");
+  if (!ADMIN_TOKEN || !phone || !SALON_SEED_NAME || !SALON_SEED_BUSINESS_NAME) return;
+
+  const clients = readClients();
+  const existing = clients.find(c => String(c.phone || "").replace(/\D/g, "") === phone);
+  if (existing) {
+    let changed = false;
+    if (!existing.businessType) { existing.businessType = "salao"; changed = true; }
+    if (!existing.aiPrompt) { existing.aiPrompt = salonPromptPadrao(SALON_SEED_BUSINESS_NAME); changed = true; }
+    if (existing.aiEnabled !== false) { existing.aiEnabled = false; changed = true; }
+    if (existing.manualMode !== true) { existing.manualMode = true; changed = true; }
+    if (changed) writeClients(clients);
+    return;
+  }
+
+  const token = crypto.randomBytes(24).toString("hex");
+  const created = await wuz("/admin/users", {
+    method: "POST",
+    headers: adminHeaders(true),
+    body: JSON.stringify({
+      name: SALON_SEED_BUSINESS_NAME.slice(0, 80),
+      token,
+      webhook: "",
+      events: "Message"
+    })
+  });
+
+  const client = {
+    id: crypto.randomUUID(),
+    name: SALON_SEED_NAME,
+    phone,
+    businessName: SALON_SEED_BUSINESS_NAME,
+    businessType: "salao",
+    aiPrompt: salonPromptPadrao(SALON_SEED_BUSINESS_NAME),
+    aiEnabled: false,
+    manualMode: true,
+    connected: false,
+    loggedIn: false,
+    token,
+    wuzapiUserId: created?.id || created?.data?.id || null,
+    createdAt: new Date().toISOString()
+  };
+
+  clients.push(client);
+  try {
+    await configureClientWebhook(client);
+  } catch (e) {
+    console.error("Falha ao configurar webhook do salão:", e?.message || e);
+  }
+  writeClients(clients);
+  console.log("Cliente salão preparado:", SALON_SEED_BUSINESS_NAME);
 }
 
 function agentAuthorized(req) {
@@ -1085,6 +1188,8 @@ async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
   catch (e) { console.error("Falha ao preparar cliente inicial:", e?.message || e); }
+  try { await ensureSalonSeedClient(); }
+  catch (e) { console.error("Falha ao preparar cliente salão:", e?.message || e); }
   try { await configureAllClientWebhooks(); }
   catch (e) { console.error("Falha ao configurar webhooks:", e?.message || e); }
   try { await configureExistingBusinessWebhook(); }
