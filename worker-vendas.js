@@ -161,9 +161,12 @@ if(request.method==="POST"&&url.pathname==="/api/agent/reply"){
     const b=await request.json();
     const mensagem=String(b?.mensagem||"").trim();
     const telefone=somenteDigitos(b?.telefone||"");
+    const promptPersonalizado=String(b?.prompt||"").trim().slice(0,20000);
+    const businessName=String(b?.businessName||"").trim().slice(0,120);
+    const businessType=String(b?.businessType||"geral").trim().slice(0,60);
     if(!mensagem)return json({ok:false,erro:"Mensagem vazia"},{status:400});
 
-    const systemPrompt=`Você é o assistente virtual da empresa Gelo Tutóia, responsável pelo atendimento inicial no WhatsApp. Responda sempre em português do Brasil. Seu tom deve ser acolhedor, educado, receptivo, gentil e natural. Fale com calma, sem parecer apressado. Demonstre atenção ao cliente, use frases curtas e calorosas e conduza a conversa sem pressionar. Continue sendo objetivo, mas com um jeito humano e carinhoso de atender. Nunca diga que é ChatGPT e nunca invente informações.
+    const systemPrompt=promptPersonalizado||`Você é o assistente virtual da empresa Gelo Tutóia, responsável pelo atendimento inicial no WhatsApp. Responda sempre em português do Brasil. Seu tom deve ser acolhedor, educado, receptivo, gentil e natural. Fale com calma, sem parecer apressado. Demonstre atenção ao cliente, use frases curtas e calorosas e conduza a conversa sem pressionar. Continue sendo objetivo, mas com um jeito humano e carinhoso de atender. Nunca diga que é ChatGPT e nunca invente informações.
 
 OBJETIVO:
 Atender clientes, tirar dúvidas, conduzir pedidos e coletar os dados necessários para entrega e orçamento.
@@ -204,7 +207,8 @@ FLUXO DE VENDA:
 - Se não souber algo, diga que precisa confirmar com o proprietário.
 - Seja breve. Evite textos longos e repetitivos.`;
 
-    const convKey=telefone?`agente:conversa:${telefone}`:"";
+    const tenantKey=(businessName||businessType||"gelo-tutoia").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80)||"tenant";
+    const convKey=telefone?`agente:${tenantKey}:conversa:${telefone}`:"";
     let historico=[];
     if(env.VENDAS&&convKey){
       historico=await env.VENDAS.get(convKey,{type:"json"})||[];
