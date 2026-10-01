@@ -38,11 +38,23 @@ app.get("/api/gelo/inbox-local", (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
     const hoje = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const afterMs = Math.max(0, Number(req.query?.after || 0) || 0);
+    const toMs = v => {
+      if (v == null || v === "") return 0;
+      if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+      const s=String(v).trim();
+      if (/^\d{10}$/.test(s)) return Number(s)*1000;
+      if (/^\d{13}$/.test(s)) return Number(s);
+      const t=Date.parse(s);
+      return Number.isFinite(t)?t:0;
+    };
     const vistos = new Set();
     const mensagens = [];
     for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
       const ts = String(m?.timestamp || "");
+      const tsMs = toMs(ts);
       if (localDate(ts) !== hoje) continue;
+      if (afterMs && (!tsMs || tsMs <= afterMs)) continue;
       const id = String(m?.message_id || "").trim();
       const texto = String(m?.transcricao || m?.texto || "").trim();
       if (!texto) continue;
@@ -52,14 +64,15 @@ app.get("/api/gelo/inbox-local", (req, res) => {
       mensagens.push({
         message_id:id,
         timestamp:ts,
+        timestamp_ms:tsMs,
         texto,
         sender_jid:String(m?.sender_jid || ""),
         sender_alt:String(m?.sender_alt || ""),
         tipo:String(m?.tipo || "")
       });
     }
-    mensagens.sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
-    return res.json({ ok:true, mensagens:mensagens.slice(-500) });
+    mensagens.sort((a,b)=>(a.timestamp_ms||0)-(b.timestamp_ms||0));
+    return res.json({ ok:true, after:afterMs, mensagens:mensagens.slice(-500) });
   } catch (e) {
     console.error("Falha no inbox local do Gelo Tutóia:", e?.message || e);
     return res.status(500).json({ ok:false, error:e?.message || "Falha ao ler histórico local" });
