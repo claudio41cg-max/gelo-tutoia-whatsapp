@@ -99,6 +99,165 @@ function appendWuzapiHistory(entry) {
   fs.writeFileSync(WUZAPI_HISTORY_FILE, JSON.stringify(recent, null, 2));
 }
 
+function mergeWuzapiHistory(messageId, patch = {}) {
+  const id = String(messageId || "").trim();
+  if (!id) return;
+  const all = readWuzapiHistory().filter(isAuthorizedHistoryEntry);
+  const idx = all.findIndex(x => String(x?.message_id || "") === id);
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], ...patch, message_id:id };
+  } else {
+    const entry = { ...patch, message_id:id };
+    if (!isAuthorizedHistoryEntry(entry)) return;
+    all.push(entry);
+  }
+  fs.writeFileSync(WUZAPI_HISTORY_FILE, JSON.stringify(all.slice(-5000), null, 2));
+}
+function audioMessageFromObject(root) {
+  const queue=[root]; let steps=0;
+  while(queue.length && steps++<600){
+    const x=queue.shift();
+    if(!x || typeof x!=="object") continue;
+    for(const [k,v] of Object.entries(x)){
+      if(/audioMessage/i.test(k) && v && typeof v==="object") return v;
+      if(v && typeof v==="object") queue.push(v);
+    }
+  }
+  return null;
+}
+function rawHistoryObject(m) {
+  let raw=m?.data_json ?? m?.datajson ?? m?.raw ?? null;
+  if(typeof raw==="string"){ try{ raw=JSON.parse(raw); }catch{ return null; } }
+  return raw && typeof raw==="object" ? raw : null;
+}
+function personPhoneForAudio(person, senderAlt="", senderJid="") {
+  const direct=String(senderAlt||senderJid||"").replace(/@.*/,"").replace(/\D/g,"");
+  if(direct && authorizedHistoryPhones().has(direct)) return direct;
+  const n=String(person||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  if(["tafa","tafarel","luciano","luciano rocha"].includes(n)) return HELPER_TAFA_PHONE;
+  if(["maira","flavio","flávio"].includes(n)) return HELPER_MAIRA_PHONE;
+  if(["claudio","cláudio","dinho","proprietario","proprietário"].includes(n)) return String(SEED_CLIENT_PHONE||"").replace(/\D/g,"");
+  return "";
+}
+async function downloadWuzAudioBase64(token, audio) {
+  if(!audio) return "";
+  const out=await wuz("/chat/downloadaudio",{
+    method:"POST",
+    headers:userHeaders(token,true),
+    body:JSON.stringify({
+      Url:audio.URL??audio.url??"",
+      DirectPath:audio.directPath??audio.DirectPath??"",
+      MediaKey:audio.mediaKey??audio.MediaKey??"",
+      Mimetype:audio.mimetype??audio.Mimetype??"audio/ogg; codecs=opus",
+      FileEncSHA256:audio.fileEncSHA256??audio.FileEncSHA256??"",
+      FileSHA256:audio.fileSHA256??audio.FileSHA256??"",
+      FileLength:Number(audio.fileLength??audio.FileLength??0)
+    })
+  });
+  let p=out?.data??out?.Data??out;
+  if(typeof p==="string"){ try{ p=JSON.parse(p); }catch{} }
+  return String(p?.Data??p?.data??"").replace(/^data:[^;]+;base64,/i,"");
+}
+async function processAuthorizedHistoricalAudio({token,messageId,timestamp,person,senderJid="",senderAlt="",chatJid="",audio}) {
+  const id=String(messageId||"").trim();
+  if(!id || !audio) return null;
+  const saved=readWuzapiHistory().find(x=>String(x?.message_id||"")===id);
+  if(String(saved?.transcricao||"").trim()) return {ok:true,transcricao:String(saved.transcricao),cached:true};
+  const senderPhone=personPhoneForAudio(person,senderAlt,senderJid);
+  if(!senderPhone) return null;
+  const base64=await downloadWuzAudioBase64(token,audio);
+  if(!base64) return null;
+  const relay={
+    instanceName:"gelo-tutoia",
+    forwardedToGeloTest:true,
+    historyReplay:true,
+    historyReplayTimestamp:String(timestamp||""),
+    forwardedTestSenderPhone:senderPhone,
+    base64,
+    jsonData:JSON.stringify({
+      type:"Message",
+      event:{
+        Info:{
+          Chat:String(chatJid||senderJid||""),
+          Sender:String(senderJid||chatJid||""),
+          SenderAlt:senderPhone+"@s.whatsapp.net",
+          IsFromMe:false,
+          IsGroup:false,
+          ID:id,
+          Type:"media",
+          PushName:String(person||"Remetente"),
+          Timestamp:String(timestamp||new Date().toISOString())
+        },
+        Message:{audioMessage:{}}
+      }
+    })
+  };
+  const rr=await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(relay)
+  });
+  const result=await rr.json().catch(()=>({}));
+  if(!rr.ok || !result?.ok) return null;
+  const transcricao=String(result?.transcricao||"").trim();
+  mergeWuzapiHistory(id,{
+    timestamp:String(timestamp||""),
+    pessoa:String(person||"Remetente"),
+    sender_jid:String(senderJid||""),
+    sender_alt:senderPhone+"@s.whatsapp.net",
+    chat_jid:String(chatJid||""),
+    tipo:"audio",
+    texto:transcricao,
+    transcricao,
+    interpretacao:result?.interpretacao||null,
+    is_from_me:false,
+    is_group:false,
+    origem:"wuzapi-history"
+  });
+  return {ok:true,transcricao,interpretacao:result?.interpretacao||null};
+}
+async function backfillAuthorizedAudioForDate(targetDate, suppliedToken="") {
+  const business=suppliedToken?null:await findExistingBusinessUser();
+  const token=String(suppliedToken || business?.token || business?.Token || "").trim();
+  if(!token) return {processed:0};
+  const people=[
+    {nome:"Cláudio",jids:String(SEED_CLIENT_PHONE||"").replace(/\D/g,"")?[String(SEED_CLIENT_PHONE||"").replace(/\D/g,"")+"@s.whatsapp.net"]:[]},
+    {nome:"Tafarel",jids:helperJidsByName("Tafarel")},
+    {nome:"Maíra",jids:helperJidsByName("Maíra")}
+  ];
+  const savedById=new Map(readWuzapiHistory().map(x=>[String(x?.message_id||""),x]));
+  const jobs=[],seen=new Set();
+  for(const p of people){
+    for(const jid of p.jids){
+      try{
+        const h=await wuz("/chat/history?chat_jid="+encodeURIComponent(jid)+"&limit=1000",{headers:userHeaders(token)});
+        const arr=Array.isArray(h?.data)?h.data:Array.isArray(h)?h:[];
+        for(const m of arr){
+          const id=String(m?.message_id||"").trim();
+          if(!id||seen.has(id)||localDate(m?.timestamp)!==targetDate||m?.is_from_me===true) continue;
+          const type=String(m?.message_type||"").toLowerCase();
+          if(type!=="audio"&&type!=="media") continue;
+          if(String(savedById.get(id)?.transcricao||"").trim()) continue;
+          const raw=rawHistoryObject(m);
+          const audio=audioMessageFromObject(raw);
+          if(!audio) continue;
+          seen.add(id);
+          jobs.push({token,messageId:id,timestamp:m?.timestamp,person:p.nome,senderJid:m?.sender_jid||"",senderAlt:m?.sender_alt||"",chatJid:m?.chat_jid||jid,audio});
+        }
+      }catch(e){
+        console.error("Falha ao preparar áudio histórico autorizado:",e?.message||e);
+      }
+    }
+  }
+  let processed=0;
+  for(let i=0;i<jobs.length;i+=3){
+    const batch=jobs.slice(i,i+3);
+    const done=await Promise.all(batch.map(j=>processAuthorizedHistoricalAudio(j).catch(()=>null)));
+    processed+=done.filter(Boolean).length;
+  }
+  return {processed,total:jobs.length};
+}
+
 function migrateLegacyClaroNumber() {
   if (!SEED_CLIENT_PHONE) return;
   const clients = readClients();
@@ -434,6 +593,15 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     const token = String(business?.token || business?.Token || "").trim();
     if (!token) return res.status(503).json({ error: "WhatsApp principal sem acesso ao histórico" });
 
+    try {
+      await Promise.race([
+        backfillAuthorizedAudioForDate(targetDate, token),
+        new Promise(resolve=>setTimeout(resolve, 25000))
+      ]);
+    } catch (e) {
+      console.error("Falha no preenchimento de áudios do histórico:", e?.message || e);
+    }
+
     const ownerPhone = String(SEED_CLIENT_PHONE || "").replace(/\D/g, "");
 
     const pessoas = [
@@ -561,6 +729,12 @@ app.get("/api/agent/historico-dia", async (req, res) => {
       }
     }
 
+    const transcritosPorId=new Map(readWuzapiHistory().map(x=>[String(x?.message_id||""),String(x?.transcricao||x?.texto||"").trim()]));
+    for(const m of historico){
+      if(!String(m.text_content||"").trim() && transcritosPorId.has(String(m.message_id||""))){
+        m.text_content=transcritosPorId.get(String(m.message_id||""))||"";
+      }
+    }
     historico.sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
 
     const ids = new Set(historico.map(m=>m.message_id).filter(Boolean));
@@ -907,6 +1081,7 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       chat_jid:String(info?.Chat || ""),
       tipo:String(info?.Type || ""),
       texto:String(text || ""),
+      transcricao:String(text || ""),
       is_from_me:info?.IsFromMe === true,
       is_group:info?.IsGroup === true,
       origem:"wuzapi"
@@ -925,6 +1100,20 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
     const internalSaleSender = !!senderPhone && (senderPhone === seedPhoneDigits || INTERNAL_SALE_SENDERS.includes(senderPhone));
     if (internalSaleSender) {
       console.log("Mensagem interna/de teste: não responder com agente de clientes.", senderPhone);
+      const audio=audioMessageFromObject(msg);
+      const messageId=String(info?.ID||info?.Id||info?.id||"").trim();
+      if(isIncoming && isPrivateChat && audio && messageId){
+        processAuthorizedHistoricalAudio({
+          token,
+          messageId,
+          timestamp:String(info?.Timestamp||new Date().toISOString()),
+          person:String(info?.PushName||"Remetente"),
+          senderJid:String(info?.Sender||""),
+          senderAlt:String(info?.SenderAlt||""),
+          chatJid:String(info?.Chat||""),
+          audio
+        }).catch(e=>console.error("Falha ao transcrever áudio interno:",e?.message||e));
+      }
     }
     if (state.aiEnabled === true && state.manualMode === false && isIncoming && isPrivateChat && !internalSaleSender && senderPhone && String(text || "").trim()) {
       let body = "";
@@ -1410,11 +1599,10 @@ async function start() {
   catch (e) { console.error("Falha ao ativar histórico WuzAPI:", e?.message || e); }
   try { await logTafarelTodayOnce(); }
   catch (e) { console.error("Falha na verificação do agente Tafarel:", e?.message || e); }
-  try { await logLucianoWindowTodayOnce(); }
-  catch (e) { console.error("Falha no diagnóstico Luciano 8-12:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
-    setTimeout(() => { replayLucianoSalesWindowOnce().catch(e=>console.log("LUCIANO_REPLAY_SUMMARY",JSON.stringify({ok:false,erro:String(e?.message||e)}))); }, 1200);
+    const hoje=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    setTimeout(()=>{backfillAuthorizedAudioForDate(hoje).catch(e=>console.error("Falha no backfill de áudio autorizado:",e?.message||e));},2000);
   });
 }
 
