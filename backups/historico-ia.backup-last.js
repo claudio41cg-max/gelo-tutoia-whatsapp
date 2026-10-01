@@ -130,17 +130,69 @@ function instalarBotao(){
   mic.textContent='🎙️';
   const key='geloTutoia.gptMicWanted.v1';
   const syncMic=()=>{
-    const on=localStorage.getItem(key)==='1';
+    const live=window.GeloGPTLive;
+    const on=!!(live&&live.state&&(live.state.running||live.state.starting));
     mic.classList.toggle('on',on);
     mic.setAttribute('aria-pressed',on?'true':'false');
     mic.title=on?'Microfone GPT ligado':'Microfone GPT desligado';
   };
   syncMic();
-  mic.addEventListener('click',()=>{
-    const on=localStorage.getItem(key)==='1';
-    if(on)localStorage.removeItem(key);else localStorage.setItem(key,'1');
-    syncMic();
-    if(typeof toast==='function')toast(on?'Microfone GPT desligado':'Microfone GPT ligado');
+
+  const onLiveState=()=>syncMic();
+  window.addEventListener('gelo-gpt-live-state',onLiveState);
+
+  const pedidoDeHistorico=text=>{
+    const t=String(text||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+    return /(historico|relatorio|fechamento|vendas).*(hoje|ontem|anteontem|dias? atras|\\d{1,2}\\/\\d{1,2}\\/20\\d{2}|20\\d{2}-\\d{2}-\\d{2})/.test(t)
+      || /(hoje|ontem|anteontem|dias? atras).*(historico|relatorio|fechamento|vendas)/.test(t);
+  };
+
+  mic.addEventListener('click',async()=>{
+    const live=window.GeloGPTLive;
+    if(!live){
+      if(typeof toast==='function')toast('GPT Live ainda não carregou');
+      return;
+    }
+    if(live.state.running||live.state.starting){
+      await live.stop();
+      localStorage.removeItem(key);
+      syncMic();
+      if(typeof toast==='function')toast('Microfone GPT desligado');
+      return;
+    }
+    mic.disabled=true;
+    try{
+      await live.start({
+        voice:'cove',
+        onState:(name,detail)=>{
+          syncMic();
+          if(name==='error'&&typeof toast==='function')toast('GPT Live: '+String(detail||'erro'));
+        },
+        onTranscript:async ev=>{
+          if(!ev||!ev.final||ev.role!=='user')return;
+          const text=String(ev.text||'').trim();
+          if(!text||!pedidoDeHistorico(text))return;
+          try{
+            live.cancelResponse();
+            if(typeof toast==='function')toast('Buscando histórico...');
+            const r=await window.GeloTutoiaGPT.relatorioPorPedido(text);
+            const resposta=String(r&&r.reply||'').trim();
+            if(resposta)live.speakText(resposta);
+          }catch(e){
+            if(typeof toast==='function')toast('Não consegui buscar o histórico');
+          }
+        }
+      });
+      localStorage.setItem(key,'1');
+      syncMic();
+      if(typeof toast==='function')toast('Microfone GPT ligado');
+    }catch(e){
+      localStorage.removeItem(key);
+      syncMic();
+      if(typeof toast==='function')toast(String(e&&e.message||e));
+    }finally{
+      mic.disabled=false;
+    }
   });
 
   row.append(b,mic);
