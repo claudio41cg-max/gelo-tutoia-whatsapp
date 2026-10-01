@@ -4,6 +4,7 @@
   const PANEL_INBOX_API='https://painel-clientes-production.up.railway.app/api/gelo/inbox';
   const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
   const PANEL_RESET_DAY='https://painel-clientes-production.up.railway.app/api/gelo/reset-day';
+  const PANEL_IGNORE_SALE='https://painel-clientes-production.up.railway.app/api/gelo/ignore-sale';
   let gtSyncGeneration=0;
   let gtResetEmAndamento=false;
   const GT_RESET_CUTOFF_KEY='gelo_tutoia_reset_cutoff_v1';
@@ -192,7 +193,26 @@
     const i=vendasRecebidas.findIndex(x=>String(x.id)===String(id));
     if(i<0)return;
     const v=vendasRecebidas[i];
-    confirmar('Excluir este registro?','A venda será removida do histórico de Recebidas e, se estiver no movimento do dia, também sairá dos totais.','Sim, excluir',()=>{
+    confirmar('Excluir este registro?','A venda será removida do movimento e não voltará a ser lançada automaticamente. O histórico bruto do WhatsApp continua guardado para o GPT.','Sim, excluir',async()=>{
+      const set=idsIgnorados();
+      if(v.remoteId)set.add(String(v.remoteId));
+      salvarIdsIgnorados(set);
+
+      let messageId=String(v?.sourceMessageId||'').trim();
+      if(!messageId && /^railway-/.test(String(v?.remoteId||''))){
+        messageId=String(v.remoteId).replace(/^railway-/,'').replace(/-\d+$/,'');
+      }
+      if(messageId){
+        try{
+          await fetch(PANEL_IGNORE_SALE,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({message_id:messageId}),
+            cache:'no-store'
+          });
+        }catch(e){console.warn('Falha ao persistir exclusão da venda no Railway',e)}
+      }
+
       if(v.remoteId&&S.vpc?.[v.cliente]){
         S.vpc[v.cliente]=S.vpc[v.cliente].filter(x=>x.remoteId!==v.remoteId);
       }
@@ -280,6 +300,7 @@
             id:'remoto-'+remoteId,
             remoteId,
             remoteKey:'',
+            sourceMessageId:String(m?.message_id||''),
             criadoEm,
             hora:horaDaDataIso(criadoEm),
             origem:'WhatsApp automático',
