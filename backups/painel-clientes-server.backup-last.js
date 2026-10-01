@@ -491,6 +491,34 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     .replace("@s.whatsapp.net", "")
     .replace(/\D/g, "");
 
+  // Se esta instância estiver enviando uma mensagem para o WhatsApp principal do Gelo Tutóia
+  // (caso de teste Claro -> TIM), encaminha uma cópia ao Worker de vendas.
+  try {
+    const recipientPhone = String(info?.RecipientAlt || "")
+      .replace("@s.whatsapp.net", "")
+      .replace(/\D/g, "");
+    if (info?.IsFromMe === true && recipientPhone && c?.phone) {
+      const business = await findExistingBusinessUser();
+      const businessJid = String(business?.jid || business?.Jid || "")
+        .replace(/@.*/, "")
+        .replace(/\D/g, "");
+      if (businessJid && recipientPhone === businessJid) {
+        await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...payload,
+            forwardedToGeloTest: true,
+            forwardedTestSenderPhone: String(c.phone || "").replace(/\D/g, "")
+          })
+        });
+        console.log("Teste enviado ao Gelo Tutóia a partir de", c.businessName || c.name);
+      }
+    }
+  } catch (e) {
+    console.error("Falha ao encaminhar teste para o Gelo Tutóia:", e?.message || e);
+  }
+
   const isManagedBusinessSender = senderPhone === "5521981378219";
   if (c.aiEnabled && !c.manualMode && isIncoming && isPrivateChat && !isManagedBusinessSender && senderPhone && String(text || "").trim()) {
     let body = "";
