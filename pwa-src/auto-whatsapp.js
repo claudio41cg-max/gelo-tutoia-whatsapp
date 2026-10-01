@@ -22,7 +22,8 @@
     btn.dataset.gtResetCompleto='1';
     btn.onclick=()=>{
       confirmar('Reiniciar o dia?','Todos os dados do dia serão apagados e vendas antigas do WhatsApp não voltarão. Tem certeza?','Sim, reiniciar',()=>{
-        localStorage.setItem(GT_RESET_CUTOFF_KEY,String(Date.now()));
+        const corteAgora=Date.now();
+        localStorage.setItem(GT_RESET_CUTOFF_KEY,String(corteAgora));
         vendasRecebidas.splice(0,vendasRecebidas.length);
         salvarInbox();
         S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
@@ -197,13 +198,15 @@
   setTimeout(()=>{try{sincronizarInboxRemoto(false)}catch(e){}},1800);
   async function sincronizarViaHistoricoLocal(mostrarAviso){
     try{
-      const r=await fetch(PANEL_LOCAL_FEED+'?ts='+Date.now(),{cache:'no-store'});
+      const corte=resetCutoff();
+      const r=await fetch(PANEL_LOCAL_FEED+'?after='+encodeURIComponent(corte)+'&ts='+Date.now(),{cache:'no-store'});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const d=await r.json();
       const mensagens=Array.isArray(d?.mensagens)?d.mensagens:[];
       let novas=0,ignoradas=0;
       for(const m of mensagens){
-        if(antesDoCorte(m?.timestamp))continue;
+        const msgMs=Number(m?.timestamp_ms||0)||new Date(m?.timestamp||0).getTime();
+        if(resetCutoff() && (!msgMs || msgMs<=resetCutoff()))continue;
         const texto=String(m?.texto||'').trim();
         if(!texto)continue;
         const vendas=typeof interpretarLinhaVenda==='function'?interpretarLinhaVenda(texto):[];
@@ -293,9 +296,9 @@
     if(syncRapidoEmAndamento)return {ok:false,ocupado:true};
     syncRapidoEmAndamento=true;
     try{
-      let resultado=await syncAnterior(false);
-      if(!resultado?.ok)resultado=await sincronizarViaPainel(false);
-      if(!resultado?.ok)resultado=await sincronizarViaHistoricoLocal(mostrarAviso);
+      let resultado=await sincronizarViaHistoricoLocal(false);
+      if(!resultado?.ok)resultado=await syncAnterior(false);
+      if(!resultado?.ok)resultado=await sincronizarViaPainel(mostrarAviso);
       if(resultado?.ok){
         limparAntesDoCorte();
         const total=integrar();
