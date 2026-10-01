@@ -116,6 +116,8 @@ function publicClient(c) {
     name: c.name,
     phone: c.phone,
     businessName: c.businessName || "",
+    businessType: c.businessType || "geral",
+    aiPrompt: c.aiPrompt || "",
     aiEnabled: !!c.aiEnabled,
     manualMode: !!c.manualMode,
     createdAt: c.createdAt,
@@ -202,11 +204,17 @@ async function configureClientWebhook(c) {
   return true;
 }
 
-async function gerarRespostaIA(mensagem, telefone = "") {
+async function gerarRespostaIA(mensagem, telefone = "", agentConfig = {}) {
   const res = await fetch(AI_AGENT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mensagem, telefone })
+    body: JSON.stringify({
+      mensagem,
+      telefone,
+      businessName: String(agentConfig?.businessName || "").trim(),
+      businessType: String(agentConfig?.businessType || "geral").trim(),
+      prompt: String(agentConfig?.aiPrompt || "").trim()
+    })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.ok || !data?.resposta) {
@@ -669,6 +677,8 @@ app.post("/api/clients", async (req, res) => {
     const name = String(req.body?.name || "").trim();
     const phone = String(req.body?.phone || "").trim();
     const businessName = String(req.body?.businessName || "").trim();
+    const businessType = String(req.body?.businessType || "geral").trim().toLowerCase();
+    const aiPrompt = String(req.body?.aiPrompt || "").trim().slice(0, 20000);
     if (!name || !phone) return res.status(400).json({ error: "Nome e telefone são obrigatórios." });
 
     const clients = readClients();
@@ -683,9 +693,9 @@ app.post("/api/clients", async (req, res) => {
     });
 
     const client = {
-      id, name, phone, businessName,
+      id, name, phone, businessName, businessType, aiPrompt,
       aiEnabled: false,
-      manualMode: false,
+      manualMode: true,
       connected: false,
       loggedIn: false,
       token,
@@ -803,7 +813,7 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
     if (state.aiEnabled === true && state.manualMode === false && isIncoming && isPrivateChat && !internalSaleSender && senderPhone && String(text || "").trim()) {
       let body = "";
       try {
-        body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
+        body = await gerarRespostaIA(String(text || "").trim(), senderPhone, c);
       } catch (e) {
         console.error("Falha ao gerar resposta IA no TIM:", e?.message || e);
         return res.json({ ok: true, autoReply: false, aiError: e?.message || "Falha na IA" });
@@ -933,6 +943,27 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
   }
 
   res.json({ ok: true, aiEnabled: !!c.aiEnabled, manualMode: !!c.manualMode, autoReply: false });
+});
+
+app.patch("/api/clients/:id/agent", (req, res) => {
+  if (req.params.id === "external-gelo-tutoia") {
+    return res.status(400).json({ error: "O agente principal do Gelo Tutóia é gerenciado separadamente." });
+  }
+  const clients = readClients();
+  const c = clients.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: "Cliente não encontrado." });
+
+  if (typeof req.body?.businessType === "string") {
+    c.businessType = String(req.body.businessType || "geral").trim().toLowerCase().slice(0, 60) || "geral";
+  }
+  if (typeof req.body?.aiPrompt === "string") {
+    c.aiPrompt = String(req.body.aiPrompt || "").trim().slice(0, 20000);
+  }
+  if (typeof req.body?.businessName === "string") {
+    c.businessName = String(req.body.businessName || "").trim().slice(0, 120);
+  }
+  writeClients(clients);
+  res.json(publicClient(c));
 });
 
 app.patch("/api/clients/:id/controls", (req, res) => {
