@@ -1,4 +1,5 @@
 name: Deploy Cloudflare Worker
+# redeploy-trigger: 2026-10-01-reset-fix
 on:
   push:
     branches: [main]
