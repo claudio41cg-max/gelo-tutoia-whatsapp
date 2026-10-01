@@ -1585,6 +1585,39 @@ async function replayLucianoSalesWindowOnce(){
   }
 }
 
+
+function logAudioHistoryConfirmation(){
+  try{
+    const rows=readWuzapiHistory().filter(isAuthorizedHistoryEntry);
+    const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+    const localTime=iso=>{
+      const d=new Date(iso); if(Number.isNaN(d.getTime())) return "";
+      const p=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).formatToParts(d).map(x=>[x.type,x.value]));
+      return `${p.hour}:${p.minute}:${p.second}`;
+    };
+    const audiosToday=rows.filter(r=>localDate(r?.timestamp)===today && /audio|media/i.test(String(r?.tipo||"")));
+    const withTranscript=audiosToday.filter(r=>String(r?.transcricao||r?.texto||"").trim());
+    const tafa=audiosToday.filter(r=>{
+      const n=norm(r?.pessoa);
+      const h=localTime(r?.timestamp);
+      return (n.includes("luciano")||n.includes("tafa")) && h>="08:00:00" && h<="12:00:00";
+    }).map(r=>({
+      horario:localTime(r?.timestamp),
+      transcricao:String(r?.transcricao||r?.texto||"").trim(),
+      interpretacao:r?.interpretacao||null
+    }));
+    console.log("AUDIO_HISTORY_CONFIRM",JSON.stringify({
+      data:today,
+      audios_autorizados_hoje:audiosToday.length,
+      com_transcricao:withTranscript.length,
+      tafarel_08_12:tafa
+    }));
+  }catch(e){
+    console.log("AUDIO_HISTORY_CONFIRM",JSON.stringify({erro:String(e?.message||e)}));
+  }
+}
+
 async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
@@ -1602,7 +1635,7 @@ async function start() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
     const hoje=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-    setTimeout(()=>{backfillAuthorizedAudioForDate(hoje).catch(e=>console.error("Falha no backfill de áudio autorizado:",e?.message||e));},2000);
+    setTimeout(async()=>{try{await backfillAuthorizedAudioForDate(hoje);}catch(e){console.error("Falha no backfill de áudio autorizado:",e?.message||e);}finally{logAudioHistoryConfirmation();}},2000);
   });
 }
 
