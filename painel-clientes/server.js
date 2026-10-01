@@ -33,6 +33,24 @@ const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || 
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
 
+app.get("/api/gelo/inbox", async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const rr = await fetch(GELO_INBOX_URL + (GELO_INBOX_URL.includes("?") ? "&" : "?") + "ts=" + Date.now(), {
+      headers: { Accept: "application/json" }
+    });
+    const textBody = await rr.text();
+    let data = {};
+    try { data = JSON.parse(textBody || "{}"); } catch {}
+    if (!rr.ok) return res.status(502).json({ ok:false, error:"Worker inbox HTTP " + rr.status });
+    return res.json({ ok:true, vendas:Array.isArray(data?.vendas) ? data.vendas : [] });
+  } catch (e) {
+    console.error("Falha no proxy do inbox Gelo Tutóia:", e?.message || e);
+    return res.status(502).json({ ok:false, error:e?.message || "Falha ao buscar inbox" });
+  }
+});
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: false, manualMode: true }, null, 2));
