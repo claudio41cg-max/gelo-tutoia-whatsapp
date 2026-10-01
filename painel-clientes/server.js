@@ -579,6 +579,13 @@ function localDate(iso) {
   const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return `${v.year}-${v.month}-${v.day}`;
 }
+function localTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone:"America/Sao_Paulo", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false }).formatToParts(d);
+  const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return `${v.hour}:${v.minute}:${v.second}`;
+}
 
 app.get("/api/agent/historico-dia", async (req, res) => {
   try {
@@ -588,6 +595,20 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data)
       ? data
       : new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+
+    const normalizarHora = (v, fallback) => {
+      const s=String(v||"").trim();
+      const m=s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if(!m) return fallback;
+      const h=Math.max(0,Math.min(23,Number(m[1]))),min=Math.max(0,Math.min(59,Number(m[2]))),sec=Math.max(0,Math.min(59,Number(m[3]||0)));
+      return String(h).padStart(2,"0")+":"+String(min).padStart(2,"0")+":"+String(sec).padStart(2,"0");
+    };
+    const inicio=normalizarHora(req.query?.inicio||req.query?.hora_inicio,"00:00:00");
+    const fim=normalizarHora(req.query?.fim||req.query?.hora_fim,"23:59:59");
+    const dentroDaFaixa = iso => {
+      const h=localTime(iso);
+      return !!h && h>=inicio && h<=fim;
+    };
 
     const business = await findExistingBusinessUser();
     const token = String(business?.token || business?.Token || "").trim();
@@ -672,7 +693,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     const vistos = new Set();
 
     for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
-      if (localDate(m?.timestamp) !== targetDate) continue;
+      if (localDate(m?.timestamp) !== targetDate || !dentroDaFaixa(m?.timestamp)) continue;
       const id = String(m?.message_id || "");
       const phone = String(m?.sender_alt || m?.sender_jid || "").replace(/@.*/, "").replace(/\D/g, "");
       const pessoa = nomePorPhone.get(phone) || nomePorJid.get(String(m?.sender_jid || "")) || String(m?.pessoa || "Remetente");
@@ -757,6 +778,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
       const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       return localDate(v?.recebido_em) === targetDate &&
+        dentroDaFaixa(v?.recebido_em) &&
         (ids.has(id) || Object.values(phonesByName).includes(remetente));
     }).map(v => {
       const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
@@ -781,6 +803,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     res.json({
       ok:true,
       data:targetDate,
+      faixa:{inicio,fim},
       pessoas:pessoasEncontradas,
       mensagens_historico:historico.length,
       mensagens:historico.map(m=>({
