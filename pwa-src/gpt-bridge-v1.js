@@ -139,6 +139,72 @@ async function ask(payload={},retry=true){
   };
 }
 
+function dataLocalISO(d=new Date()){
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(d);
+  const v=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return `${v.year}-${v.month}-${v.day}`;
+}
+
+function resolverDataPedido(texto=''){
+  const t=String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const now=new Date();
+  const shift=days=>{
+    const d=new Date(now.getTime());
+    d.setDate(d.getDate()-days);
+    return dataLocalISO(d);
+  };
+  if(/\banteontem\b/.test(t))return shift(2);
+  if(/\bontem\b/.test(t))return shift(1);
+  if(/\bhoje\b/.test(t))return shift(0);
+  const dias=t.match(/\b(\d{1,3})\s+dias?\s+(?:atras|atrás)\b/);
+  if(dias)return shift(Math.max(0,Math.min(365,Number(dias[1])||0)));
+  const iso=t.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if(iso)return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br=t.match(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/);
+  if(br)return `${br[3]}-${String(br[2]).padStart(2,'0')}-${String(br[1]).padStart(2,'0')}`;
+  return shift(0);
+}
+
+async function historicoDia(data='',retry=true){
+  const auth=await token();
+  const qs=new URLSearchParams();
+  if(data)qs.set('data',String(data).trim());
+  const r=await fetch(TURBO+'/__turbo/gelo-history?'+qs.toString(),{
+    method:'GET',
+    headers:{'authorization':'Bearer '+auth,'accept':'application/json'},
+    cache:'no-store'
+  });
+  const d=await r.json().catch(()=>({}));
+  if(r.status===401&&retry){
+    localStorage.removeItem(TOKEN_KEY);
+    return historicoDia(data,false);
+  }
+  if(!r.ok||!d?.ok)throw new Error(d?.error||'Não consegui ler o histórico do dia.');
+  return d;
+}
+
+async function relatorioDia(data='',pedido=''){
+  const historico=await historicoDia(data);
+  const mensagem=String(pedido||'').trim()||
+    'Analise todas as mensagens deste dia, independentemente de quem trabalhou. Identifique automaticamente quem enviou cada mensagem ou áudio. Separe vendas concluídas, avisos, tentativas não concluídas, correções e conversa comum. Gere um relatório curto em formato de bloco de notas, em ordem cronológica, e some quantidades e valores somente quando houver dados suficientes. Não invente nada.';
+  const contexto={
+    data:String(historico.data||data||''),
+    pessoas:Array.isArray(historico.pessoas)?historico.pessoas:[],
+    mensagens:Array.isArray(historico.mensagens)?historico.mensagens:[],
+    vendas:Array.isArray(historico.vendas)?historico.vendas:[],
+    mensagens_historico:Number(historico.mensagens_historico||0)
+  };
+  const resultado=await ask({message:mensagem,contexto});
+  return {...resultado,historico};
+}
+
+async function relatorioPorPedido(pedido=''){
+  const data=resolverDataPedido(pedido);
+  return relatorioDia(data,pedido);
+}
+
 async function historicoPessoa(helper,data='',retry=true){
   const auth=await token();
   const qs=new URLSearchParams({helper:String(helper||'').trim()});
@@ -175,6 +241,10 @@ async function relatorioPessoa(helper,data='',pedido=''){
 window.GeloTutoiaGPT={
   ask,
   auth:token,
+  resolverDataPedido,
+  historicoDia,
+  relatorioDia,
+  relatorioPorPedido,
   historicoPessoa,
   relatorioPessoa,
   reset(){localStorage.removeItem(SESSION_KEY);},
