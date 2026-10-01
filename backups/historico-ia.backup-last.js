@@ -151,6 +151,77 @@ function instalarBotao(){
     return tema&&(acao||dataRelativa||dataBr||dataIso||/historico/.test(t));
   };
 
+  const timeoutPromise=(promise,ms,msg)=>Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error(msg||'Tempo esgotado')),ms))
+  ]);
+
+  const iniciarLive=async({saudar=false,falarDepois=''}={})=>{
+    const live=window.GeloGPTLive;
+    if(!live)throw new Error('GPT Live ainda não carregou');
+
+    await live.start({
+      voice:'cove',
+      onState:(name,detail)=>{
+        syncMic();
+        if(name==='error'&&typeof toast==='function')toast('GPT Live: '+String(detail||'erro'));
+      },
+      onTranscript:async ev=>{
+        if(!ev||!ev.final||ev.role!=='user')return;
+        const text=String(ev.text||'').trim();
+        if(!text||!pedidoDeHistorico(text))return;
+        if(mic.dataset.historyBusy==='1')return;
+
+        mic.dataset.historyBusy='1';
+        try{
+          if(typeof toast==='function')toast('Buscando histórico...');
+          // Fecha esta sessão antes da consulta para impedir o GPT Live
+          // de responder "estou pesquisando" ao mesmo tempo que o app busca os dados reais.
+          await live.stop();
+
+          const r=await timeoutPromise(
+            window.GeloTutoiaGPT.relatorioPorPedido(text),
+            20000,
+            'A consulta do histórico demorou demais'
+          );
+          const resposta=String(r&&r.reply||'').trim();
+
+          if(!resposta)throw new Error('O histórico não retornou resposta');
+
+          await iniciarLive({saudar:false,falarDepois:resposta});
+        }catch(e){
+          try{
+            if(!(live.state.running||live.state.starting)){
+              await iniciarLive({saudar:false});
+            }
+          }catch(_){}
+          if(typeof toast==='function')toast(String(e&&e.message||'Não consegui buscar o histórico'));
+        }finally{
+          delete mic.dataset.historyBusy;
+        }
+      }
+    });
+
+    localStorage.setItem(key,'1');
+    syncMic();
+
+    const fala=String(falarDepois||'').trim();
+    if(fala){
+      setTimeout(()=>{
+        try{
+          if(!live.speakText(fala)&&typeof toast==='function')toast('Histórico encontrado, mas a voz não respondeu');
+        }catch(e){}
+      },300);
+    }else if(saudar){
+      setTimeout(()=>{
+        try{
+          live.speakText('Olá, Cláudio. GPT do Gelo Tutóia conectado. Pode falar comigo.');
+        }catch(e){}
+      },300);
+    }
+    return true;
+  };
+
   mic.addEventListener('click',async()=>{
     const live=window.GeloGPTLive;
     if(!live){
@@ -166,41 +237,7 @@ function instalarBotao(){
     }
     mic.disabled=true;
     try{
-      await live.start({
-        voice:'cove',
-        onState:(name,detail)=>{
-          syncMic();
-          if(name==='error'&&typeof toast==='function')toast('GPT Live: '+String(detail||'erro'));
-        },
-        onTranscript:async ev=>{
-          if(!ev||!ev.final||ev.role!=='user')return;
-          const text=String(ev.text||'').trim();
-          if(!text||!pedidoDeHistorico(text))return;
-          if(mic.dataset.historyBusy==='1')return;
-          mic.dataset.historyBusy='1';
-          try{
-            if(typeof live.pauseInput==='function')live.pauseInput();
-            if(typeof toast==='function')toast('Buscando histórico...');
-            const r=await window.GeloTutoiaGPT.relatorioPorPedido(text);
-            const resposta=String(r&&r.reply||'').trim();
-            if(resposta){
-              const ok=live.speakText(resposta);
-              if(!ok&&typeof toast==='function')toast('Histórico encontrado, mas a voz não respondeu');
-            }else if(typeof toast==='function'){
-              toast('Histórico consultado sem resposta');
-            }
-          }catch(e){
-            if(typeof toast==='function')toast('Não consegui buscar o histórico');
-          }finally{
-            setTimeout(()=>{
-              try{if(typeof live.resumeInput==='function')live.resumeInput()}catch(e){}
-              delete mic.dataset.historyBusy;
-            },700);
-          }
-        }
-      });
-      localStorage.setItem(key,'1');
-      syncMic();
+      await iniciarLive({saudar:true});
       if(typeof toast==='function')toast('Microfone GPT ligado');
     }catch(e){
       localStorage.removeItem(key);
