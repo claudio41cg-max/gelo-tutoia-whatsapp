@@ -110,7 +110,7 @@
     if(btn){btn.disabled=true;btn.textContent='⏳ Buscando...'}
     let timeoutId;
     try{
-      const limite=new Promise(resolve=>{timeoutId=setTimeout(()=>resolve({ok:false,timeout:true}),12000)});
+      const limite=new Promise(resolve=>{timeoutId=setTimeout(()=>resolve({ok:false,timeout:true}),30000)});
       const resultado=await Promise.race([sincronizarInboxRemoto(true),limite]);
       if(resultado?.timeout)toast('⚠ A busca demorou demais. Tente novamente.');
     }catch(e){
@@ -120,6 +120,62 @@
       syncManualEmAndamento=false;
       try{telaVendasRecebidas(filtro)}catch(e){}
     }
+  };
+
+
+  function recalcularMovimentoDoDia(){
+    let esc=0,filt=0,pix=0,din=0,fiad=0;
+    for(const lista of Object.values(S.vpc||{})){
+      for(const v of Array.isArray(lista)?lista:[]){
+        if(v.tipo==='obs')continue;
+        const q=Number(v.qtd)||0,val=Number(v.valor)||0;
+        if(v.tipo==='esc')esc+=q; else if(v.tipo==='filt')filt+=q;
+        if(v.pag==='PIX')pix+=val; else if(v.pag==='Fiado')fiad+=val; else if(v.pag==='Dinheiro')din+=val;
+      }
+    }
+    S.esc=esc;S.filt=filt;S.pix=pix;S.din=din;S.fiad=fiad;S.caixa=pix+din;
+    S.atendidos=new Set(Object.keys(S.vpc||{}).filter(n=>(S.vpc[n]||[]).some(v=>v.tipo!=='obs')));
+    salvarEstado();salvarDiaNoHistorico();updHdr();
+  }
+  window.excluirVendaRecebida=function(id){
+    const i=vendasRecebidas.findIndex(x=>String(x.id)===String(id));
+    if(i<0)return;
+    const v=vendasRecebidas[i];
+    confirmar('Excluir este registro?','A venda será removida do histórico de Recebidas e, se estiver no movimento do dia, também sairá dos totais.','Sim, excluir',()=>{
+      if(v.remoteId&&S.vpc?.[v.cliente]){
+        S.vpc[v.cliente]=S.vpc[v.cliente].filter(x=>x.remoteId!==v.remoteId);
+      }
+      vendasRecebidas.splice(i,1);
+      salvarInbox();recalcularMovimentoDoDia();
+      toast('🗑 Venda excluída');
+      telaVendasRecebidas('Confirmada');
+    });
+  };
+  telaVendasRecebidas=function(filtro='Confirmada'){
+    if(filtro==='Pendente')filtro='Confirmada';
+    const lista=vendasRecebidas.filter(v=>v.status===filtro);
+    const conf=vendasRecebidas.filter(v=>v.status==='Confirmada').length;
+    const ign=vendasRecebidas.filter(v=>v.status==='Ignorada').length;
+    let h=`<div class="pg-hdr"><div class="pg-title">💬 VENDAS RECEBIDAS</div>
+      <div class="pg-sub">Histórico das vendas do WhatsApp</div></div>
+      <button id="btn-sync-wa" class="act-btn" style="margin:0 14px 10px;width:calc(100% - 28px);border-color:rgba(22,137,255,.45);color:#9ed1ff" onclick="atualizarVendasWhatsApp('${filtro}')">🔄 ATUALIZAR WHATSAPP</button>
+      <div class="tabs3" style="grid-template-columns:1fr 1fr">
+        <button class="tab3 ${filtro==='Confirmada'?'active':''}" onclick="telaVendasRecebidas('Confirmada')">Confirmadas ${conf}</button>
+        <button class="tab3 ${filtro==='Ignorada'?'active':''}" onclick="telaVendasRecebidas('Ignorada')">Ignoradas ${ign}</button>
+      </div>`;
+    if(!lista.length)h+='<div class="empty">Nenhuma venda nesta área.</div>';
+    lista.slice().reverse().forEach(v=>{
+      h+=`<div class="inbox-card">
+        <div class="inbox-top"><b>🕒 ${escHtml(v.hora||'')}</b><span class="status-pill st-${String(v.status).toLowerCase()}">${v.status}</span></div>
+        <div style="font-size:11px;color:#1689ff;font-weight:800;margin-bottom:4px">${escHtml(v.origem||'WhatsApp')}${v.confianca?` · IA: ${escHtml(v.confianca)}`:''}</div>
+        <div style="font-size:13px;color:#536b7b;margin-bottom:7px">"${escHtml(v.transcricao||'')}"</div>
+        <div style="font-weight:900">${escHtml(v.cliente||'')}</div>
+        <div>${Number(v.qtd)||0}x ${v.tipo==='esc'?'Escamas':'Filtrado'} · <b>${escHtml(v.pag||'Não informado')}</b> · ${fmt(Number(v.valor)||0)}</div>
+        <div class="inbox-actions"><button class="mini-btn mini-no" onclick="excluirVendaRecebida('${v.id}')">🗑 Excluir</button></div>
+      </div>`;
+    });
+    h+='<button class="act-btn btn-back" onclick="fecharSub(false)">‹ Voltar</button>';
+    abrirSub(h);atualizarBadgeInbox();
   };
 
   setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
