@@ -19,7 +19,10 @@ function brData(iso){
   return m?(m[3]+'/'+m[2]+'/'+m[1]):String(iso||'');
 }
 
-const css='.gt-ai-history-btn{grid-column:1/-1;background:linear-gradient(135deg,#6a35b8,#254b9b)!important;color:#fff!important}'
+const css='.gt-ai-history-row{grid-column:1/-1;display:grid;grid-template-columns:1fr 54px;gap:8px}'
++'.gt-ai-history-btn{background:linear-gradient(135deg,#6a35b8,#254b9b)!important;color:#fff!important}'
++'.gt-ai-mic{border:0;border-radius:14px;background:linear-gradient(135deg,#1988df,#0d56a5);color:#fff;font-size:24px;font-weight:900;display:grid;place-items:center;min-height:54px;box-shadow:0 0 0 rgba(31,163,255,0);transition:.18s ease}'
++'.gt-ai-mic.on{background:linear-gradient(135deg,#22c96c,#07833f);box-shadow:0 0 15px rgba(42,255,135,.6),0 0 28px rgba(42,255,135,.28);transform:scale(1.02)}'
 +'.gt-ai-history-wrap{padding:0 14px 24px}'
 +'.gt-ai-history-card{background:rgba(19,43,65,.82);border:1px solid rgba(137,177,255,.28);border-radius:16px;padding:14px;margin:10px 0}'
 +'.gt-ai-history-card label{display:block;font-size:12px;font-weight:900;letter-spacing:.06em;color:#9fc5e7;margin:10px 0 5px}'
@@ -110,13 +113,38 @@ window.telaHistoricoIA=abrirTelaHistoricoIA;
 
 function instalarBotao(){
   const grid=document.querySelector('.quick-grid');
-  if(!grid||grid.querySelector('.gt-ai-history-btn'))return;
+  if(!grid||grid.querySelector('.gt-ai-history-row'))return;
+  const row=document.createElement('div');
+  row.className='gt-ai-history-row';
+
   const b=document.createElement('button');
   b.type='button';
   b.className='quick-btn gt-ai-history-btn';
-  b.innerHTML='<span class="qi">🤖</span> HISTÓRICO IA';
+  b.textContent='HISTÓRICO IA';
   b.addEventListener('click',abrirTelaHistoricoIA);
-  grid.prepend(b);
+
+  const mic=document.createElement('button');
+  mic.type='button';
+  mic.className='gt-ai-mic';
+  mic.setAttribute('aria-label','Microfone do GPT');
+  mic.textContent='🎙️';
+  const key='geloTutoia.gptMicWanted.v1';
+  const syncMic=()=>{
+    const on=localStorage.getItem(key)==='1';
+    mic.classList.toggle('on',on);
+    mic.setAttribute('aria-pressed',on?'true':'false');
+    mic.title=on?'Microfone GPT ligado':'Microfone GPT desligado';
+  };
+  syncMic();
+  mic.addEventListener('click',()=>{
+    const on=localStorage.getItem(key)==='1';
+    if(on)localStorage.removeItem(key);else localStorage.setItem(key,'1');
+    syncMic();
+    if(typeof toast==='function')toast(on?'Microfone GPT desligado':'Microfone GPT ligado');
+  });
+
+  row.append(b,mic);
+  grid.prepend(row);
 }
 
 instalarBotao();
