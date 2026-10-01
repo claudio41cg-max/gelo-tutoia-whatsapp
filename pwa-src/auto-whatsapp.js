@@ -3,6 +3,33 @@
   const syncAnterior=sincronizarInboxRemoto;
   const PANEL_INBOX_API='https://painel-clientes-production.up.railway.app/api/gelo/inbox';
   const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
+  const GT_RESET_CUTOFF_KEY='gelo_tutoia_reset_cutoff_v1';
+  function resetCutoff(){const n=Number(localStorage.getItem(GT_RESET_CUTOFF_KEY)||0);return Number.isFinite(n)?n:0}
+  function antesDoCorte(iso){const t=new Date(iso||0).getTime();return !!t&&t<=resetCutoff()}
+  function limparAntesDoCorte(){
+    const corte=resetCutoff();if(!corte)return;
+    let mudou=false;
+    for(let i=vendasRecebidas.length-1;i>=0;i--){
+      const t=new Date(vendasRecebidas[i]?.criadoEm||0).getTime();
+      if(t&&t<=corte){vendasRecebidas.splice(i,1);mudou=true}
+    }
+    if(mudou)salvarInbox();
+  }
+  function configurarResetCompleto(){
+    const botoes=[...document.querySelectorAll('.btn-reset')];
+    const btn=botoes.find(b=>/REINICIAR TUDO/i.test(String(b.textContent||'')));
+    if(!btn||btn.dataset.gtResetCompleto==='1')return;
+    btn.dataset.gtResetCompleto='1';
+    btn.onclick=()=>{
+      confirmar('Reiniciar o dia?','Todos os dados do dia serão apagados e vendas antigas do WhatsApp não voltarão. Tem certeza?','Sim, reiniciar',()=>{
+        localStorage.setItem(GT_RESET_CUTOFF_KEY,String(Date.now()));
+        vendasRecebidas.splice(0,vendasRecebidas.length);
+        salvarInbox();
+        S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
+        salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');
+      });
+    };
+  }
   const lancarAnterior=lancarRecebidaNoDia;
   const confirmarAnterior=confirmarVendaRecebida;
   let statusAtivo=null,pendencias=[];
@@ -18,7 +45,7 @@
     mostrarStatus();
   }
   const telaClientesAnterior=telaClientes;
-  telaClientes=function(...args){const r=telaClientesAnterior.apply(this,args);setTimeout(mostrarStatus,0);return r};
+  telaClientes=function(...args){const r=telaClientesAnterior.apply(this,args);setTimeout(()=>{mostrarStatus();configurarResetCompleto()},0);return r};
   mostrarStatus();checarStatus();
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sincronizarInboxRemoto(false)});
   confirmarVendaRecebida=function(id){
@@ -176,6 +203,7 @@
       const mensagens=Array.isArray(d?.mensagens)?d.mensagens:[];
       let novas=0,ignoradas=0;
       for(const m of mensagens){
+        if(antesDoCorte(m?.timestamp))continue;
         const texto=String(m?.texto||'').trim();
         if(!texto)continue;
         const vendas=typeof interpretarLinhaVenda==='function'?interpretarLinhaVenda(texto):[];
@@ -269,6 +297,7 @@
       if(!resultado?.ok)resultado=await sincronizarViaPainel(false);
       if(!resultado?.ok)resultado=await sincronizarViaHistoricoLocal(mostrarAviso);
       if(resultado?.ok){
+        limparAntesDoCorte();
         const total=integrar();
         for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
           await marcarStatusRemoto(v,'confirmada_app');
