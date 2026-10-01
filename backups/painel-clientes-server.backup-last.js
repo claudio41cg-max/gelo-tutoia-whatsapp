@@ -270,49 +270,105 @@ app.get("/api/agent/historico-dia", async (req, res) => {
 
     const businessJid = String(business?.jid || business?.Jid || business?.JID || "").trim();
     const businessPhone = businessJid.replace(/@.*/, "").replace(/\D/g, "");
+    const businessId = String(business?.id || business?.ID || business?.user_id || business?.userID || "").trim();
 
     const pessoas = [
       { nome:"Tafarel", phone:HELPER_TAFA_PHONE, jids:helperJidsByName("Tafarel") },
-      { nome:"Maíra", phone:HELPER_MAIRA_PHONE, jids:helperJidsByName("Maíra") },
-      { nome:"Cláudio", phone:businessPhone, jids:[...new Set([businessJid, businessPhone ? businessPhone + "@s.whatsapp.net" : ""].filter(Boolean))] }
+      { nome:"Maíra", phone:HELPER_MAIRA_PHONE, jids:helperJidsByName("Maíra") }
     ].filter(p=>p.phone && p.jids.length);
+
+    const nomePorJid = new Map();
+    for (const p of pessoas) {
+      for (const jid of p.jids) nomePorJid.set(String(jid), p.nome);
+      if (p.phone) nomePorJid.set(p.phone + "@s.whatsapp.net", p.nome);
+    }
+
+    function pushNameHistorico(m) {
+      let raw = m?.data_json ?? m?.datajson ?? "";
+      if (!raw) return "";
+      try {
+        if (typeof raw === "string") raw = JSON.parse(raw);
+      } catch { return ""; }
+      const fila = [raw];
+      let passos = 0;
+      while (fila.length && passos++ < 80) {
+        const x = fila.shift();
+        if (!x || typeof x !== "object") continue;
+        for (const [k,v] of Object.entries(x)) {
+          if (/^(pushname|push_name|pushName)$/i.test(k) && typeof v === "string" && v.trim()) return v.trim();
+          if (v && typeof v === "object") fila.push(v);
+        }
+      }
+      return "";
+    }
+
+    const jids = new Set([
+      businessJid,
+      businessPhone ? businessPhone + "@s.whatsapp.net" : "",
+      ...pessoas.flatMap(p=>p.jids)
+    ].filter(Boolean));
+
+    try {
+      const idxResp = await wuz("/chat/history?chat_jid=index", { headers:userHeaders(token) });
+      let payload = idxResp?.data ?? idxResp;
+      if (typeof payload === "string") {
+        try { payload = JSON.parse(payload); } catch {}
+      }
+      const chats = businessId && payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (Array.isArray(payload[businessId]) ? payload[businessId] : [])
+        : [];
+      for (const ch of chats.slice(0, 250)) {
+        const jid = String(ch?.chat_jid || "").trim();
+        const last = String(ch?.last_updated || ch?.last_message_time || "");
+        if (!jid) continue;
+        if (!last || localDate(last) >= targetDate) jids.add(jid);
+      }
+    } catch (e) {
+      console.error("Falha ao descobrir conversas do histórico WuzAPI:", e?.message || e);
+    }
 
     const historico = [];
     const vistos = new Set();
 
-    for (const pessoa of pessoas) {
-      for (const jid of pessoa.jids) {
-        try {
-          const h = await wuz("/chat/history?chat_jid=" + encodeURIComponent(jid) + "&limit=1000", { headers:userHeaders(token) });
-          const arr = Array.isArray(h?.data) ? h.data : Array.isArray(h) ? h : [];
-          for (const m of arr) {
-            if (localDate(m?.timestamp) !== targetDate) continue;
-            const id = String(m?.message_id || "");
-            const dedupe = id || [pessoa.nome, m?.timestamp || "", m?.message_type || "", m?.text_content || ""].join("|");
-            if (vistos.has(dedupe)) continue;
-            vistos.add(dedupe);
-            historico.push({
-              pessoa:pessoa.nome,
-              phone:pessoa.phone,
-              message_id:id,
-              timestamp:m?.timestamp || "",
-              message_type:m?.message_type || "",
-              text_content:m?.text_content || "",
-              media_link:m?.media_link || "",
-              chat_jid:m?.chat_jid || jid,
-              sender_jid:m?.sender_jid || ""
-            });
-          }
-        } catch (e) {
-          if (e?.status !== 501) console.error("Falha ao ler histórico diário", pessoa.nome, e?.message || e);
+    for (const jid of jids) {
+      try {
+        const h = await wuz("/chat/history?chat_jid=" + encodeURIComponent(jid) + "&limit=1000", { headers:userHeaders(token) });
+        const arr = Array.isArray(h?.data) ? h.data : Array.isArray(h) ? h : [];
+        for (const m of arr) {
+          if (localDate(m?.timestamp) !== targetDate) continue;
+          const id = String(m?.message_id || "");
+          const senderJid = String(m?.sender_jid || "");
+          const pushName = pushNameHistorico(m);
+          const pessoa = nomePorJid.get(senderJid) || nomePorJid.get(String(m?.chat_jid || jid)) ||
+            (/claudio/i.test(pushName.normalize("NFD").replace(/[\u0300-\u036f]/g,"")) ? "Cláudio" : pushName || "Remetente");
+          const phone = senderJid.replace(/@.*/, "").replace(/\D/g, "");
+          const dedupe = id || [pessoa, m?.timestamp || "", m?.message_type || "", m?.text_content || ""].join("|");
+          if (vistos.has(dedupe)) continue;
+          vistos.add(dedupe);
+          historico.push({
+            pessoa,
+            phone,
+            message_id:id,
+            timestamp:m?.timestamp || "",
+            message_type:m?.message_type || "",
+            text_content:m?.text_content || "",
+            media_link:m?.media_link || "",
+            chat_jid:m?.chat_jid || jid,
+            sender_jid:senderJid
+          });
         }
+      } catch (e) {
+        if (e?.status !== 501) console.error("Falha ao ler histórico diário", jid, e?.message || e);
       }
     }
 
     historico.sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
 
     const ids = new Set(historico.map(m=>m.message_id).filter(Boolean));
-    const phonesByName = Object.fromEntries(pessoas.map(p=>[p.nome,p.phone]));
+    const phonesByName = Object.fromEntries([
+      ...pessoas.map(p=>[p.nome,p.phone]),
+      ...historico.filter(m=>m.phone&&m.pessoa).map(m=>[m.pessoa,m.phone])
+    ]);
     const personById = new Map(historico.map(m=>[m.message_id,m.pessoa]).filter(x=>x[0]));
 
     let inbox = [];
