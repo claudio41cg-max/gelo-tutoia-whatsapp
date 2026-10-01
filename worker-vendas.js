@@ -46,6 +46,7 @@ async function interpretar(env,key,texto,remetente,origem="meta"){
   const auto_elegivel=preparadas.length===1?preparadas[0].auto_elegivel:false;
   await salvar(env,key,{status:"venda_interpretada",venda,vendas:preparadas,auto_elegivel,origem,interpretado_em:new Date().toISOString()});
   console.log("Gelo Tutóia - vendas interpretadas:",JSON.stringify(preparadas));
+  return {venda,vendas:preparadas,auto_elegivel};
 }
 function itensVendaDoRegistro(key,reg){
   const lista=Array.isArray(reg?.vendas)&&reg.vendas.length?reg.vendas:(reg?.venda?[reg.venda]:[]);
@@ -55,7 +56,7 @@ function itensVendaDoRegistro(key,reg){
     const base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:v.auto_elegivel===true||(lista.length===1&&reg.auto_elegivel===true),remetente:reg.remetente||"",nome_remetente:reg.nome||""};
     for(const [tipo,q,suf] of [["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){
       const id=lista.length===1?(key+":"+suf):(key+":v"+idx+":"+suf);
-      if(Number(q)>0)out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo});
+      if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo});
     }
   });
   return out;
@@ -74,9 +75,6 @@ async function listarInbox(env){
     for(const nome of unicos){
       const r=await env.VENDAS.get(nome,{type:"json"});
       if(r?.venda)out.push(...itensVendaDoRegistro(nome,r));
-      else if(String(nome).startsWith("mensagem:DIAG-")&&r?.transcricao){
-        out.push({remote_key:nome,remote_id:nome+":diag",cliente:"",qtd:0,tipo:"diag",pagamento:"Não informado",transcricao:r.transcricao,confianca:r.status||""});
-      }
     }
     return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)));
   }
@@ -87,9 +85,6 @@ async function listarInbox(env){
     for(const k of p.keys){
       const r=await env.VENDAS.get(k.name,{type:"json"});
       if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r));
-      else if(String(k.name).startsWith("mensagem:DIAG-")&&r?.transcricao){
-        out.push({remote_key:k.name,remote_id:k.name+":diag",cliente:"",qtd:0,tipo:"diag",pagamento:"Não informado",transcricao:r.transcricao,confianca:r.status||""});
-      }
       if(dataSaoPaulo(r?.recebido_em||r?.interpretado_em||r?.atualizado_em)===hoje)indexHoje.push(k.name);
     }
     cursor=p.list_complete?undefined:p.cursor;
@@ -281,18 +276,25 @@ if(wz?.wuzapi){
   const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:new Date().toISOString()};
   await salvar(env,key,resumo);
   await indexarMensagemDia(env,key,resumo.recebido_em);
-  if(wz.texto){try{await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}
+  let transcricao="",interpretacao=null,erroProcessamento="";
+  if(wz.texto){
+    transcricao=wz.texto;
+    try{interpretacao=await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){erroProcessamento=String(e);await salvar(env,key,{status:"erro_parser",erro_parser:erroProcessamento})}
+  }
   else if(wz.audio){
     if(!wz.base64)await salvar(env,key,{status:"audio_wuzapi_sem_base64"});
     else try{
       const audio=base64ParaArrayBuffer(wz.base64);
       await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength,origem_audio:"wuzapi"});
-      const texto=await transcreverAudio(env,audio);
-      await salvar(env,key,{status:"transcrito",texto,transcricao:texto,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});
-      await interpretar(env,key,texto,remetente,"wuzapi");
-    }catch(e){await salvar(env,key,{status:"erro_transcricao",erro_transcricao:String(e)})}
+      transcricao=await transcreverAudio(env,audio);
+      await salvar(env,key,{status:"transcrito",texto:transcricao,transcricao,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});
+      interpretacao=await interpretar(env,key,transcricao,remetente,"wuzapi");
+    }catch(e){erroProcessamento=String(e);await salvar(env,key,{status:"erro_transcricao",erro_transcricao:erroProcessamento})}
   }else{
     await salvar(env,key,{status:"wuzapi_sem_texto"});
+  }
+  if(body?.forwardedToGeloTest===true||body?.historyReplay===true){
+    return json({ok:true,mensagem_id:wz.id||"",transcricao,interpretacao,erro:erroProcessamento||""});
   }
   return new Response("EVENT_RECEIVED",{status:200});
 }
