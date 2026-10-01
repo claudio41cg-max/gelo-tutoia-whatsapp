@@ -1332,6 +1332,7 @@ async function replayLucianoSalesWindowOnce(){
         const base64=dataUrl.replace(/^data:[^;]+;base64,/i,"");
         if(!base64)continue;
         const senderAlt=String(item.m?.sender_alt||item.m?.sender_jid||"");
+        const syntheticId="DIAG-"+item.id;
         const payload={
           instanceName:"gelo-tutoia",
           base64,
@@ -1340,7 +1341,7 @@ async function replayLucianoSalesWindowOnce(){
             event:{
               Info:{
                 Chat:item.jid,Sender:item.jid,SenderAlt:senderAlt,IsFromMe:false,IsGroup:false,
-                ID:item.id,Type:"media",PushName:"Luciano Rocha",Timestamp:item.m?.timestamp
+                ID:syntheticId,Type:"media",PushName:"Luciano Rocha",Timestamp:item.m?.timestamp
               },
               Message:{audioMessage:{}}
             }
@@ -1349,7 +1350,7 @@ async function replayLucianoSalesWindowOnce(){
         const rr=await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev",{
           method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)
         });
-        if(rr.ok)replayed.push({id:item.id,time:item.time});
+        if(rr.ok)replayed.push({id:syntheticId,time:item.time});
       }catch(e){
         console.log("LUCIANO_REPLAY_ITEM_ERROR",item.time,String(e?.message||e));
       }
@@ -1359,10 +1360,11 @@ async function replayLucianoSalesWindowOnce(){
     const inboxData=await inboxResp.json().catch(()=>({}));
     const vendas=Array.isArray(inboxData?.vendas)?inboxData.vendas:[];
     const timeById=new Map(replayed.map(x=>[x.id,x.time]));
-    const result=vendas.filter(v=>{
+    const matched=vendas.filter(v=>{
       const id=String(v?.remote_key||"").replace(/^mensagem:/,"");
       return timeById.has(id);
-    }).map(v=>({
+    });
+    const result=matched.map(v=>({
       horario:timeById.get(String(v?.remote_key||"").replace(/^mensagem:/,""))||"",
       cliente:v?.cliente||"",
       qtd:Number(v?.qtd||0),
@@ -1371,6 +1373,16 @@ async function replayLucianoSalesWindowOnce(){
       transcricao:v?.transcricao||"",
       confianca:v?.confianca||""
     })).sort((a,b)=>a.horario.localeCompare(b.horario));
+    const statusUrl=String(GELO_INBOX_URL||"").replace(/\/api\/inbox\/?$/,"/api/inbox/status");
+    for(const v of matched){
+      try{
+        await fetch(statusUrl,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({remote_key:v.remote_key,remote_id:v.remote_id,status:"ignorada_app"})
+        });
+      }catch{}
+    }
     const totals=result.reduce((a,v)=>{
       a.vendas++;
       a.sacos+=v.qtd;
