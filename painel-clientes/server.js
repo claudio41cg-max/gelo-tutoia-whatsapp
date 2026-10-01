@@ -33,6 +33,39 @@ const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || 
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
 
+app.get("/api/gelo/inbox-local", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const hoje = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const vistos = new Set();
+    const mensagens = [];
+    for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
+      const ts = String(m?.timestamp || "");
+      if (localDate(ts) !== hoje) continue;
+      const id = String(m?.message_id || "").trim();
+      const texto = String(m?.transcricao || m?.texto || "").trim();
+      if (!texto) continue;
+      const dedupe = id || [ts, texto, m?.sender_jid || "", m?.sender_alt || ""].join("|");
+      if (vistos.has(dedupe)) continue;
+      vistos.add(dedupe);
+      mensagens.push({
+        message_id:id,
+        timestamp:ts,
+        texto,
+        sender_jid:String(m?.sender_jid || ""),
+        sender_alt:String(m?.sender_alt || ""),
+        tipo:String(m?.tipo || "")
+      });
+    }
+    mensagens.sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
+    return res.json({ ok:true, mensagens:mensagens.slice(-500) });
+  } catch (e) {
+    console.error("Falha no inbox local do Gelo Tutóia:", e?.message || e);
+    return res.status(500).json({ ok:false, error:e?.message || "Falha ao ler histórico local" });
+  }
+});
+
 app.get("/api/gelo/inbox", async (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Cache-Control", "no-store");
