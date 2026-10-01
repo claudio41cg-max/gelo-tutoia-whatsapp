@@ -178,15 +178,26 @@
     abrirSub(h);atualizarBadgeInbox();
   };
 
+  let syncRapidoEmAndamento=false;
   setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
   sincronizarInboxRemoto=async function(mostrarAviso=true){
-    const resultado=await syncAnterior(mostrarAviso);
-    if(resultado?.ok){
-      integrar();
-      for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
-        await marcarStatusRemoto(v,'confirmada_app');
+    if(syncRapidoEmAndamento)return {ok:false,ocupado:true};
+    syncRapidoEmAndamento=true;
+    try{
+      const resultado=await syncAnterior(mostrarAviso);
+      if(resultado?.ok){
+        integrar();
+        for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
+          await marcarStatusRemoto(v,'confirmada_app');
+        }
       }
+      return resultado;
+    }finally{
+      syncRapidoEmAndamento=false;
     }
-    return resultado;
   };
+  setInterval(()=>{
+    if(document.hidden||syncRapidoEmAndamento)return;
+    sincronizarInboxRemoto(false).catch(()=>{});
+  },5000);
 })();
