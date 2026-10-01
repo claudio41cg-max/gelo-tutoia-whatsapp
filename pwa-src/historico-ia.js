@@ -176,14 +176,26 @@ function instalarBotao(){
           if(!ev||!ev.final||ev.role!=='user')return;
           const text=String(ev.text||'').trim();
           if(!text||!pedidoDeHistorico(text))return;
+          if(mic.dataset.historyBusy==='1')return;
+          mic.dataset.historyBusy='1';
           try{
-            live.cancelResponse();
+            if(typeof live.pauseInput==='function')live.pauseInput();
             if(typeof toast==='function')toast('Buscando histórico...');
             const r=await window.GeloTutoiaGPT.relatorioPorPedido(text);
             const resposta=String(r&&r.reply||'').trim();
-            if(resposta)live.speakText(resposta);
+            if(resposta){
+              const ok=live.speakText(resposta);
+              if(!ok&&typeof toast==='function')toast('Histórico encontrado, mas a voz não respondeu');
+            }else if(typeof toast==='function'){
+              toast('Histórico consultado sem resposta');
+            }
           }catch(e){
             if(typeof toast==='function')toast('Não consegui buscar o histórico');
+          }finally{
+            setTimeout(()=>{
+              try{if(typeof live.resumeInput==='function')live.resumeInput()}catch(e){}
+              delete mic.dataset.historyBusy;
+            },700);
           }
         }
       });
