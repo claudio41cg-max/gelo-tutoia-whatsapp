@@ -134,7 +134,7 @@ async function start(options){
           'Converse de forma natural, curta e objetiva em português do Brasil.',
           'Ajude o Cláudio com vendas, clientes, pagamentos e histórico do WhatsApp.',
           'Nunca invente vendas, valores, clientes ou entregas.',
-          'Quando o usuário pedir histórico, relatório, fechamento, vendas do WhatsApp ou dados do WuzAPI, não diga que está pesquisando e não improvise uma resposta. O aplicativo consulta os dados reais e depois envia o resultado para você ler.'
+          'Quando o usuário pedir histórico, relatório, fechamento, vendas do WhatsApp ou dados do WuzAPI, não responda com frases como "vou analisar", "calma aí" ou "estou pesquisando". Fique em silêncio e aguarde: o aplicativo encerra esta sessão, consulta os dados reais e abre outra sessão com o resultado pronto para você ler.'
         ].join(' ')).slice(0,12000)
       })
     });
