@@ -24,6 +24,8 @@ const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-wha
 const AGENT_READ_TOKEN = String(process.env.AGENT_READ_TOKEN || "");
 const HELPER_TAFA_PHONE = String(process.env.HELPER_TAFA_PHONE || "").replace(/\D/g, "");
 const HELPER_MAIRA_PHONE = String(process.env.HELPER_MAIRA_PHONE || "").replace(/\D/g, "");
+const HELPER_TAFA_JID = String(process.env.HELPER_TAFA_JID || "").trim();
+const HELPER_MAIRA_JID = String(process.env.HELPER_MAIRA_JID || "").trim();
 const GELO_INBOX_URL = String(process.env.GELO_INBOX_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/inbox");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -236,47 +238,97 @@ function helperPhoneByName(nome) {
   if (["maira","maíra","flavio","flávio"].includes(n)) return HELPER_MAIRA_PHONE;
   return "";
 }
+function helperJidsByName(nome) {
+  const n = String(nome || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const phone = helperPhoneByName(nome);
+  const out = [];
+  if (phone) out.push(phone + "@s.whatsapp.net");
+  if (["tafa","tafarel","luciano","luciano rocha"].includes(n) && HELPER_TAFA_JID) out.push(HELPER_TAFA_JID);
+  if (["maira","maíra","flavio","flávio"].includes(n) && HELPER_MAIRA_JID) out.push(HELPER_MAIRA_JID);
+  return [...new Set(out)];
+}
+function localDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(d);
+  const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return `${v.year}-${v.month}-${v.day}`;
+}
 app.get("/api/agent/vendas-ajudante", async (req, res) => {
   try {
     if (!agentAuthorized(req)) return res.status(401).json({ error: "Não autorizado" });
     const helper = String(req.query?.helper || "").trim();
     const phone = helperPhoneByName(helper);
-    if (!phone) return res.status(400).json({ error: "Ajudante inválido" });
+    const jids = helperJidsByName(helper);
+    if (!phone || !jids.length) return res.status(400).json({ error: "Ajudante inválido" });
 
     const data = String(req.query?.data || "").trim();
-    const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : new Date().toISOString().slice(0,10);
+    const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data)
+      ? data
+      : new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
 
-    const r = await fetch(GELO_INBOX_URL, { headers: { "Accept": "application/json" } });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d?.ok || !Array.isArray(d?.vendas)) {
-      return res.status(502).json({ error: "Falha ao consultar caixa do Gelo Tutóia" });
+    const business = await findExistingBusinessUser();
+    const token = String(business?.token || business?.Token || "").trim();
+    if (!token) return res.status(503).json({ error: "WhatsApp principal sem acesso ao histórico" });
+
+    const historico = [];
+    for (const jid of jids) {
+      try {
+        const h = await wuz("/chat/history?chat_jid=" + encodeURIComponent(jid) + "&limit=1000", { headers:userHeaders(token) });
+        const arr = Array.isArray(h?.data) ? h.data : Array.isArray(h) ? h : [];
+        for (const m of arr) {
+          if (localDate(m?.timestamp) !== targetDate) continue;
+          historico.push({
+            message_id:String(m?.message_id || ""),
+            timestamp:m?.timestamp || "",
+            message_type:m?.message_type || "",
+            text_content:m?.text_content || "",
+            media_link:m?.media_link || "",
+            chat_jid:m?.chat_jid || jid,
+            sender_jid:m?.sender_jid || ""
+          });
+        }
+      } catch (e) {
+        if (e?.status !== 501) console.error("Falha ao ler histórico", jid, e?.message || e);
+      }
     }
 
-    const sameDay = iso => {
-      const dt = new Date(iso);
-      if (Number.isNaN(dt.getTime())) return false;
-      const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,"0"), day = String(dt.getDate()).padStart(2,"0");
-      return `${y}-${m}-${day}` === targetDate;
-    };
+    const ids = new Set(historico.map(m=>m.message_id).filter(Boolean));
+    const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
+    const inboxData = await inboxResp.json().catch(()=>({}));
+    const inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
 
-    const vendas = d.vendas.filter(v => {
+    const vendas = inbox.filter(v => {
+      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
-      return remetente === phone && sameDay(v?.recebido_em);
+      return localDate(v?.recebido_em) === targetDate && (ids.has(id) || remetente === phone);
     }).map(v => ({
-      recebido_em: v.recebido_em,
-      transcricao: v.transcricao,
-      cliente: v.cliente,
-      qtd: v.qtd,
-      tipo: v.tipo,
-      pagamento: v.pagamento,
-      confianca: v.confianca,
-      remote_key: v.remote_key
+      recebido_em:v.recebido_em,
+      transcricao:v.transcricao,
+      cliente:v.cliente,
+      qtd:v.qtd,
+      tipo:v.tipo,
+      pagamento:v.pagamento,
+      confianca:v.confianca,
+      remote_key:v.remote_key
     })).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
 
-    res.json({ ok: true, helper, data: targetDate, total: vendas.length, vendas });
+    const mensagensSemVenda = historico
+      .filter(m=>!inbox.some(v=>String(v?.remote_key||"").replace(/^mensagem:/,"")===m.message_id))
+      .map(m=>({recebido_em:m.timestamp,tipo:m.message_type,texto:m.text_content||"",message_id:m.message_id}));
+
+    res.json({
+      ok:true,
+      helper,
+      data:targetDate,
+      total:vendas.length,
+      vendas,
+      mensagens_historico:historico.length,
+      mensagens_sem_venda:mensagensSemVenda
+    });
   } catch (e) {
     console.error("Falha no agente de vendas do ajudante:", e?.message || e);
-    res.status(500).json({ error: String(e?.message || e) });
+    res.status(500).json({ error:String(e?.message || e) });
   }
 });
 
