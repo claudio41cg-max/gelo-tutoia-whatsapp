@@ -337,8 +337,9 @@ async function ensureSalonSeedClient() {
     let changed = false;
     if (!existing.businessType) { existing.businessType = "salao"; changed = true; }
     if (!existing.aiPrompt) { existing.aiPrompt = salonPromptPadrao(SALON_SEED_BUSINESS_NAME); changed = true; }
-    if (existing.aiEnabled !== false) { existing.aiEnabled = false; changed = true; }
-    if (existing.manualMode !== true) { existing.manualMode = true; changed = true; }
+    // Preserva os controles escolhidos no painel após o primeiro cadastro.
+    if (typeof existing.aiEnabled !== "boolean") { existing.aiEnabled = false; changed = true; }
+    if (typeof existing.manualMode !== "boolean") { existing.manualMode = true; changed = true; }
     if (changed) writeClients(clients);
     return;
   }
