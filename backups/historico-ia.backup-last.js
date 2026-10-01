@@ -143,11 +143,12 @@ function instalarBotao(){
 
   const pedidoDeHistorico=text=>{
     const t=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-    const tema=/(historico|relatorio|fechamento|vendas)/.test(t);
+    const tema=/(historico|relatorio|fechamento|vendas|wuzapi|whatsapp)/.test(t);
+    const acao=/(mostra|mostrar|ver|veja|buscar|procura|consultar|consulta|fazer|gera|gerar|me fala|me diga|qual|quais)/.test(t);
     const dataRelativa=/(hoje|ontem|anteontem|dias? atras)/.test(t);
     const dataBr=/\b\d{1,2}\/\d{1,2}\/20\d{2}\b/.test(t);
     const dataIso=/\b20\d{2}-\d{2}-\d{2}\b/.test(t);
-    return tema&&(dataRelativa||dataBr||dataIso);
+    return tema&&(acao||dataRelativa||dataBr||dataIso||/historico/.test(t));
   };
 
   mic.addEventListener('click',async()=>{
