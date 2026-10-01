@@ -78,23 +78,19 @@
     limparFalsosPositivosLocais();
     let total=0,alterou=false,revisar=0;
     for(const v of vendasRecebidas){
-      if(!['Pendente','Confirmada'].includes(v.status)||!v.remoteId||!hoje(v.criadoEm))continue;
+      // Só vendas novas e ainda pendentes podem entrar automaticamente no movimento do dia.
+      // Itens que já estão em Confirmadas servem apenas como histórico e nunca são relançados.
+      if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
       if(!vendaLocalValida(v))continue;
 
-      const faltandoNoDia=!jaLancada(v.remoteId);
-      if(faltandoNoDia){
+      if(!jaLancada(v.remoteId)){
         if(['PIX','Dinheiro','Fiado'].includes(v.pag))lancarRecebidaNoDia(v);
         else lancarSemPagamento(v);
         total++;
         if(v.confianca==='revisar'||!['PIX','Dinheiro','Fiado'].includes(v.pag))revisar++;
       }
 
-      // "Confirmada" no inbox não significa que a venda pode sumir do movimento local.
-      // Se o app foi zerado/recarregado e a venda de hoje não existe mais na tela principal,
-      // ela é restaurada automaticamente sem duplicar.
-      if(v.status!=='Confirmada'||faltandoNoDia){
-        v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='pendente';alterou=true;
-      }
+      v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='pendente';alterou=true;
     }
     if(alterou){
       // Durante os testes, toda venda reconhecível entra direto no movimento do dia.
