@@ -142,9 +142,12 @@ function instalarBotao(){
   window.addEventListener('gelo-gpt-live-state',onLiveState);
 
   const pedidoDeHistorico=text=>{
-    const t=String(text||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
-    return /(historico|relatorio|fechamento|vendas).*(hoje|ontem|anteontem|dias? atras|\\d{1,2}\\/\\d{1,2}\\/20\\d{2}|20\\d{2}-\\d{2}-\\d{2})/.test(t)
-      || /(hoje|ontem|anteontem|dias? atras).*(historico|relatorio|fechamento|vendas)/.test(t);
+    const t=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    const tema=/(historico|relatorio|fechamento|vendas)/.test(t);
+    const dataRelativa=/(hoje|ontem|anteontem|dias? atras)/.test(t);
+    const dataBr=/\b\d{1,2}\/\d{1,2}\/20\d{2}\b/.test(t);
+    const dataIso=/\b20\d{2}-\d{2}-\d{2}\b/.test(t);
+    return tema&&(dataRelativa||dataBr||dataIso);
   };
 
   mic.addEventListener('click',async()=>{
