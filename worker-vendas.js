@@ -273,7 +273,7 @@ if(wz?.wuzapi){
   if(wz.ignorar||(wz.deMim&&!wz.selfChat))return new Response("EVENT_RECEIVED",{status:200});
   const remetente=wz.remetente||"desconhecido";
   if(!wz.selfChat&&!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
-  const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:new Date().toISOString()};
+  const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:String(body?.historyReplayTimestamp||"").trim()||new Date().toISOString()};
   await salvar(env,key,resumo);
   await indexarMensagemDia(env,key,resumo.recebido_em);
   let transcricao="",interpretacao=null,erroProcessamento="";
