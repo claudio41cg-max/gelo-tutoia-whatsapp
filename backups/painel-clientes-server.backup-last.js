@@ -1256,6 +1256,134 @@ async function logLucianoWindowTodayOnce() {
   }
 }
 
+
+function deepFindAudioMessage(root) {
+  const q=[root]; let steps=0;
+  while(q.length && steps++<500){
+    const x=q.shift();
+    if(!x || typeof x!=="object") continue;
+    for(const [k,v] of Object.entries(x)){
+      if(/audioMessage/i.test(k) && v && typeof v==="object") return v;
+      if(v && typeof v==="object") q.push(v);
+    }
+  }
+  return null;
+}
+function historyRawObject(m){
+  let raw=m?.data_json ?? m?.datajson ?? m?.raw ?? null;
+  if(typeof raw==="string"){try{raw=JSON.parse(raw)}catch{return null}}
+  return raw && typeof raw==="object" ? raw : null;
+}
+function spDateTime(iso){
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime()))return null;
+  const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+    timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
+  }).formatToParts(d).map(x=>[x.type,x.value]));
+  return {date:`${parts.year}-${parts.month}-${parts.day}`,time:`${parts.hour}:${parts.minute}:${parts.second}`};
+}
+async function replayLucianoSalesWindowOnce(){
+  try{
+    const business=await findExistingBusinessUser();
+    const token=String(business?.token||business?.Token||"").trim();
+    if(!token){console.log("LUCIANO_REPLAY_SUMMARY",JSON.stringify({ok:false,erro:"sem token"}));return}
+    const jids=helperJidsByName("Tafarel");
+    const seen=new Set(), audios=[];
+    for(const jid of jids){
+      let h;
+      try{h=await wuz("/chat/history?chat_jid="+encodeURIComponent(jid)+"&limit=1000",{headers:userHeaders(token)})}
+      catch(e){continue}
+      const arr=Array.isArray(h?.data)?h.data:Array.isArray(h)?h:[];
+      for(const m of arr){
+        const dt=spDateTime(m?.timestamp); if(!dt)continue;
+        if(dt.date!=="2026-10-01"||dt.time<"08:00:00"||dt.time>"12:00:00")continue;
+        if(m?.is_from_me===true)continue;
+        const id=String(m?.message_id||"").trim(); if(!id||seen.has(id))continue;
+        const type=String(m?.message_type||"").toLowerCase();
+        if(type!=="audio"&&type!=="media")continue;
+        const raw=historyRawObject(m);
+        const a=deepFindAudioMessage(raw);
+        if(!a)continue;
+        seen.add(id);
+        audios.push({id,time:dt.time,jid,a,m});
+      }
+    }
+    audios.sort((x,y)=>x.time.localeCompare(y.time));
+    const replayed=[];
+    for(const item of audios){
+      try{
+        const a=item.a;
+        const dl=await wuz("/chat/downloadaudio",{
+          method:"POST",headers:userHeaders(token,true),
+          body:JSON.stringify({
+            Url:a.URL??a.url??"",
+            DirectPath:a.directPath??a.DirectPath??"",
+            MediaKey:a.mediaKey??a.MediaKey??"",
+            Mimetype:a.mimetype??a.Mimetype??"audio/ogg; codecs=opus",
+            FileEncSHA256:a.fileEncSHA256??a.FileEncSHA256??"",
+            FileSHA256:a.fileSHA256??a.FileSHA256??"",
+            FileLength:Number(a.fileLength??a.FileLength??0)
+          })
+        });
+        let p=dl?.data??dl?.Data??dl;
+        if(typeof p==="string"){try{p=JSON.parse(p)}catch{}}
+        const dataUrl=String(p?.Data??p?.data??"");
+        const base64=dataUrl.replace(/^data:[^;]+;base64,/i,"");
+        if(!base64)continue;
+        const senderAlt=String(item.m?.sender_alt||item.m?.sender_jid||"");
+        const payload={
+          instanceName:"gelo-tutoia",
+          base64,
+          jsonData:JSON.stringify({
+            type:"Message",
+            event:{
+              Info:{
+                Chat:item.jid,Sender:item.jid,SenderAlt:senderAlt,IsFromMe:false,IsGroup:false,
+                ID:item.id,Type:"media",PushName:"Luciano Rocha",Timestamp:item.m?.timestamp
+              },
+              Message:{audioMessage:{}}
+            }
+          })
+        };
+        const rr=await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev",{
+          method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)
+        });
+        if(rr.ok)replayed.push({id:item.id,time:item.time});
+      }catch(e){
+        console.log("LUCIANO_REPLAY_ITEM_ERROR",item.time,String(e?.message||e));
+      }
+    }
+    await new Promise(r=>setTimeout(r,1500));
+    const inboxResp=await fetch(GELO_INBOX_URL,{headers:{Accept:"application/json"}});
+    const inboxData=await inboxResp.json().catch(()=>({}));
+    const vendas=Array.isArray(inboxData?.vendas)?inboxData.vendas:[];
+    const timeById=new Map(replayed.map(x=>[x.id,x.time]));
+    const result=vendas.filter(v=>{
+      const id=String(v?.remote_key||"").replace(/^mensagem:/,"");
+      return timeById.has(id);
+    }).map(v=>({
+      horario:timeById.get(String(v?.remote_key||"").replace(/^mensagem:/,""))||"",
+      cliente:v?.cliente||"",
+      qtd:Number(v?.qtd||0),
+      tipo:v?.tipo||"",
+      pagamento:v?.pagamento||"Não informado",
+      transcricao:v?.transcricao||"",
+      confianca:v?.confianca||""
+    })).sort((a,b)=>a.horario.localeCompare(b.horario));
+    const totals=result.reduce((a,v)=>{
+      a.vendas++;
+      a.sacos+=v.qtd;
+      if(v.tipo==="esc")a.escamas+=v.qtd;
+      if(v.tipo==="filt")a.filtrado+=v.qtd;
+      return a;
+    },{vendas:0,sacos:0,escamas:0,filtrado:0});
+    console.log("LUCIANO_REPLAY_SUMMARY",JSON.stringify({ok:true,audios_encontrados:audios.length,reprocessados:replayed.length,vendas:result,totais:totals}));
+  }catch(e){
+    console.log("LUCIANO_REPLAY_SUMMARY",JSON.stringify({ok:false,erro:String(e?.message||e)}));
+  }
+}
+
 async function start() {
   migrateLegacyClaroNumber();
   try { await ensureSeedClient(); }
@@ -1274,6 +1402,7 @@ async function start() {
   catch (e) { console.error("Falha no diagnóstico Luciano 8-12:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
+    setTimeout(() => { replayLucianoSalesWindowOnce().catch(e=>console.log("LUCIANO_REPLAY_SUMMARY",JSON.stringify({ok:false,erro:String(e?.message||e)}))); }, 1200);
   });
 }
 
