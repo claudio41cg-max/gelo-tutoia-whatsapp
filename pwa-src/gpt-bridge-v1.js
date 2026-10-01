@@ -139,9 +139,44 @@ async function ask(payload={},retry=true){
   };
 }
 
+async function historicoPessoa(helper,data='',retry=true){
+  const auth=await token();
+  const qs=new URLSearchParams({helper:String(helper||'').trim()});
+  if(data)qs.set('data',String(data).trim());
+  const r=await fetch(TURBO+'/__turbo/gelo-history?'+qs.toString(),{
+    method:'GET',
+    headers:{'authorization':'Bearer '+auth,'accept':'application/json'},
+    cache:'no-store'
+  });
+  const d=await r.json().catch(()=>({}));
+  if(r.status===401&&retry){
+    localStorage.removeItem(TOKEN_KEY);
+    return historicoPessoa(helper,data,false);
+  }
+  if(!r.ok||!d?.ok)throw new Error(d?.error||'Não consegui ler o histórico do WhatsApp.');
+  return d;
+}
+
+async function relatorioPessoa(helper,data='',pedido=''){
+  const historico=await historicoPessoa(helper,data);
+  const mensagem=String(pedido||'').trim()||
+    'Analise todas as mensagens deste dia. Separe vendas concluídas, avisos, tentativas não concluídas, correções e conversa comum. Depois gere um relatório curto em formato de bloco de notas, em ordem cronológica, com totais quando houver dados suficientes. Não invente nada.';
+  const contexto={
+    pessoa:String(historico.helper||helper||''),
+    data:String(historico.data||data||''),
+    vendas:Array.isArray(historico.vendas)?historico.vendas:[],
+    mensagens_historico:Number(historico.mensagens_historico||0),
+    mensagens_sem_venda:Array.isArray(historico.mensagens_sem_venda)?historico.mensagens_sem_venda:[]
+  };
+  const resultado=await ask({message:mensagem,contexto});
+  return {...resultado,historico};
+}
+
 window.GeloTutoiaGPT={
   ask,
   auth:token,
+  historicoPessoa,
+  relatorioPessoa,
   reset(){localStorage.removeItem(SESSION_KEY);},
   logout(){
     localStorage.removeItem(TOKEN_KEY);
