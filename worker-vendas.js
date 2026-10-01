@@ -55,7 +55,7 @@ function itensVendaDoRegistro(key,reg){
     const base={remote_key:key,transcricao:reg.transcricao||reg.texto||v.texto_origem||"",recebido_em:reg.recebido_em||reg.interpretado_em||reg.atualizado_em||"",pagamento:v.pagamento||"Não informado",confianca:v.precisa_revisao?"revisar":"alta",auto_elegivel:v.auto_elegivel===true||(lista.length===1&&reg.auto_elegivel===true),remetente:reg.remetente||"",nome_remetente:reg.nome||""};
     for(const [tipo,q,suf] of [["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){
       const id=lista.length===1?(key+":"+suf):(key+":v"+idx+":"+suf);
-      if(Number(q)>0&&!["confirmada_app","ignorada_app"].includes(st[id]))out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo});
+      if(Number(q)>0)out.push({...base,remote_id:id,cliente:v.cliente,qtd:Number(q),tipo});
     }
   });
   return out;
