@@ -167,30 +167,6 @@ async function gerarRespostaIA(mensagem, telefone = "") {
   return String(data.resposta).trim();
 }
 
-async function logRelevantGeloContactsOnce() {
-  try {
-    const business = await findExistingBusinessUser();
-    const token = String(business?.token || business?.Token || "").trim();
-    if (!business || !token) return;
-    const out = await wuz("/user/contacts", { headers: userHeaders(token) });
-    const data = out?.data && typeof out.data === "object" ? out.data : {};
-    const wanted = [
-      "guacha","barraca azul","caldo azul","barraca da direita","barraca a direita",
-      "marcelo","cosmos","vascaino","trailer vascaino","churrasco lilian","churrasco tia"
-    ];
-    const norm = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-    for (const [jid, info] of Object.entries(data)) {
-      const names = [info?.BusinessName,info?.FirstName,info?.FullName,info?.PushName].filter(Boolean).join(" | ");
-      const n = norm(names);
-      if (wanted.some(w => n.includes(norm(w)))) {
-        console.log("GT_CONTACT_MATCH", jid.replace(/@.*/, ""), names);
-      }
-    }
-  } catch (e) {
-    console.error("GT_CONTACT_LOOKUP_ERROR", e?.message || e);
-  }
-}
-
 async function configureAllClientWebhooks() {
   const clients = readClients();
   let changed = false;
@@ -619,8 +595,6 @@ async function start() {
   catch (e) { console.error("Falha ao configurar webhooks:", e?.message || e); }
   try { await configureExistingBusinessWebhook(); }
   catch (e) { console.error("Falha ao ligar webhook do WhatsApp Business:", e?.message || e); }
-  try { await logRelevantGeloContactsOnce(); }
-  catch (e) { console.error("Falha na busca pontual de contatos:", e?.message || e); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
   });
