@@ -22,6 +22,20 @@ async function downloadWhatsAppMedia(url,token){const r=await fetch(url,{headers
 function arrayBufferToBase64(a){const b=new Uint8Array(a);let s="";for(let i=0;i<b.length;i+=0x8000)s+=String.fromCharCode(...b.subarray(i,Math.min(i+0x8000,b.length)));return btoa(s)}
 async function transcreverAudio(env,a){if(!env.AI)throw new Error("binding AI não disponível");const r=await env.AI.run(TRANSCRIBE_MODEL,{audio:arrayBufferToBase64(a),task:"transcribe",language:"pt",vad_filter:true,initial_prompt:"Vendas de gelo Gelo Tutóia. Preserve nomes e apelidos dos clientes, quantidades, PIX, dinheiro, fiado, escamas e filtrado."});return String(r?.text||"").trim()}
 function chaveMensagem(id){return`mensagem:${id||`sem-id-${Date.now()}`}`}
+function dataSaoPaulo(iso){
+  const d=iso?new Date(iso):new Date();
+  try{return d.toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"})}catch{return d.toISOString().slice(0,10)}
+}
+function chaveInboxDia(data){return`inbox-dia:${data}`}
+async function indexarMensagemDia(env,key,iso){
+  if(!env.VENDAS||!key)return;
+  const dia=dataSaoPaulo(iso);
+  const idxKey=chaveInboxDia(dia);
+  const atual=await env.VENDAS.get(idxKey,{type:"json"})||{};
+  const keys=Array.isArray(atual.keys)?atual.keys.filter(Boolean):[];
+  const prox=[key,...keys.filter(x=>x!==key)].slice(0,500);
+  await env.VENDAS.put(idxKey,JSON.stringify({keys:prox,atualizado_em:new Date().toISOString()}),{expirationTtl:259200});
+}
 async function salvar(env,key,dados){if(!env.VENDAS||!key)return;const atual=await env.VENDAS.get(key,{type:"json"})||{};await env.VENDAS.put(key,JSON.stringify({...atual,...dados,atualizado_em:new Date().toISOString()}))}
 async function interpretar(env,key,texto,remetente,origem="meta"){
   const config=await getConfig(env);
@@ -46,7 +60,39 @@ function itensVendaDoRegistro(key,reg){
   });
   return out;
 }
-async function listarInbox(env){if(!env.VENDAS)return[];const out=[];let cursor;do{const p=await env.VENDAS.list({prefix:"mensagem:",cursor,limit:100});for(const k of p.keys){const r=await env.VENDAS.get(k.name,{type:"json"});if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r))}cursor=p.list_complete?undefined:p.cursor}while(cursor);return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)))}
+async function listarInbox(env){
+  if(!env.VENDAS)return[];
+  const hoje=dataSaoPaulo(),ontem=dataSaoPaulo(Date.now()-86400000);
+  const nomes=[];
+  for(const dia of [hoje,ontem]){
+    const idx=await env.VENDAS.get(chaveInboxDia(dia),{type:"json"});
+    if(Array.isArray(idx?.keys))nomes.push(...idx.keys);
+  }
+  const unicos=[...new Set(nomes)].slice(0,700);
+  const out=[];
+  if(unicos.length){
+    for(const nome of unicos){
+      const r=await env.VENDAS.get(nome,{type:"json"});
+      if(r?.venda)out.push(...itensVendaDoRegistro(nome,r));
+    }
+    return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)));
+  }
+  let cursor;
+  const indexHoje=[];
+  do{
+    const p=await env.VENDAS.list({prefix:"mensagem:",cursor,limit:100});
+    for(const k of p.keys){
+      const r=await env.VENDAS.get(k.name,{type:"json"});
+      if(r?.venda)out.push(...itensVendaDoRegistro(k.name,r));
+      if(dataSaoPaulo(r?.recebido_em||r?.interpretado_em||r?.atualizado_em)===hoje)indexHoje.push(k.name);
+    }
+    cursor=p.list_complete?undefined:p.cursor;
+  }while(cursor);
+  if(indexHoje.length){
+    await env.VENDAS.put(chaveInboxDia(hoje),JSON.stringify({keys:[...new Set(indexHoje)].slice(0,500),atualizado_em:new Date().toISOString()}),{expirationTtl:259200});
+  }
+  return out.sort((a,b)=>String(b.recebido_em).localeCompare(String(a.recebido_em)));
+}
 
 function jidTexto(v){
   if(!v)return"";
@@ -224,6 +270,7 @@ if(wz?.wuzapi){
   if(!wz.selfChat&&!remetenteAutorizado(env,remetente))return new Response("EVENT_RECEIVED",{status:200});
   const key=chaveMensagem(wz.id),resumo={tipo:wz.audio?"audio":"text",remetente,nome:wz.nome||"",mensagem_id:wz.id||"",texto:wz.texto||"",origem:"wuzapi",status:"pendente",recebido_em:new Date().toISOString()};
   await salvar(env,key,resumo);
+  await indexarMensagemDia(env,key,resumo.recebido_em);
   if(wz.texto){try{await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){await salvar(env,key,{status:"erro_parser",erro_parser:String(e)})}}
   else if(wz.audio){
     if(!wz.base64)await salvar(env,key,{status:"audio_wuzapi_sem_base64"});
