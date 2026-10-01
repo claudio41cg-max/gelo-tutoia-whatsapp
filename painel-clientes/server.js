@@ -17,6 +17,7 @@ const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
 const SEED_CLIENT_BUSINESS_NAME = String(process.env.SEED_CLIENT_BUSINESS_NAME || "").trim();
 const SEED_CLIENT_PHONE = String(process.env.SEED_CLIENT_PHONE || "").trim();
 const SEED_CLIENT_TOKEN = String(process.env.SEED_CLIENT_TOKEN || "").trim();
+const INTERNAL_SALE_SENDERS = String(process.env.INTERNAL_SALE_SENDERS || "").split(",").map(v => v.replace(/\D/g, "")).filter(Boolean);
 const LEGACY_SEED_PHONE = "5521991777811";
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/$/, "");
 const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/agent/reply");
@@ -414,7 +415,12 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
     console.log("Webhook recebido: Gelo Tutóia (TIM)", senderPhone || info?.Sender || "", String(text || "").slice(0, 160));
 
     const state = readExternalState();
-    if (state.aiEnabled && !state.manualMode && isIncoming && isPrivateChat && senderPhone && String(text || "").trim()) {
+    const seedPhoneDigits = String(SEED_CLIENT_PHONE || "").replace(/\D/g, "");
+    const internalSaleSender = !!senderPhone && (senderPhone === seedPhoneDigits || INTERNAL_SALE_SENDERS.includes(senderPhone));
+    if (internalSaleSender) {
+      console.log("Mensagem interna/de teste: não responder com agente de clientes.", senderPhone);
+    }
+    if (state.aiEnabled && !state.manualMode && isIncoming && isPrivateChat && !internalSaleSender && senderPhone && String(text || "").trim()) {
       let body = "";
       try {
         body = await gerarRespostaIA(String(text || "").trim(), senderPhone);
