@@ -21,10 +21,10 @@
   function fimSemana(dt){const d=inicioSemana(dt);d.setDate(d.getDate()+6);return d}
   function peso(v){return v.tipo==='filt'?(v.pesoKg===5?5:10):20}
   function produto(v){return v.tipo==='esc'?'Escamas 20 kg':v.tipo==='filt'?'Filtrado '+peso(v)+' kg':'Observação'}
-  function somaVendas(vs){return(vs||[]).reduce((a,v)=>{if(v.tipo==='obs')return a;const q=Number(v.qtd)||0,val=Number(v.valor)||0;a.sacos+=q;a.valor+=val;if(v.tipo==='esc')a.esc+=q;else if(v.tipo==='filt'&&peso(v)===5)a.f5+=q;else if(v.tipo==='filt')a.f10+=q;if(v.pag==='PIX')a.pix+=val;else if(v.pag==='Fiado')a.fiado+=val;else a.din+=val;return a},{esc:0,f10:0,f5:0,sacos:0,valor:0,pix:0,din:0,fiado:0})}
+  function somaVendas(vs){return(vs||[]).reduce((a,v)=>{if(v.tipo==='obs')return a;const q=Number(v.qtd)||0,val=Number(v.valor)||0;a.sacos+=q;a.valor+=val;if(v.tipo==='esc')a.esc+=q;else if(v.tipo==='filt'&&peso(v)===5)a.f5+=q;else if(v.tipo==='filt')a.f10+=q;if(v.pag==='PIX')a.pix+=val;else if(v.pag==='Fiado')a.fiado+=val;else if(v.pag==='Dinheiro')a.din+=val;else a.revisar+=val;return a},{esc:0,f10:0,f5:0,sacos:0,valor:0,pix:0,din:0,fiado:0,revisar:0})}
   function soma(a,b){Object.keys(a).forEach(k=>a[k]+=(b[k]||0));return a}
-  function zerado(){return{esc:0,f10:0,f5:0,sacos:0,valor:0,pix:0,din:0,fiado:0}}
-  function recalcularDia(d){const t=zerado();Object.values(d.vpc||{}).forEach(vs=>soma(t,somaVendas(vs)));d.esc=t.esc;d.filt=t.f10+t.f5;d.din=t.din;d.pix=t.pix;d.fiad=t.fiado;return d}
+  function zerado(){return{esc:0,f10:0,f5:0,sacos:0,valor:0,pix:0,din:0,fiado:0,revisar:0}}
+  function recalcularDia(d){const t=zerado();Object.values(d.vpc||{}).forEach(vs=>soma(t,somaVendas(vs)));d.esc=t.esc;d.filt=t.f10+t.f5;d.din=t.din;d.pix=t.pix;d.fiad=t.fiado;d.revisar=t.revisar;return d}
   function syncHoje(d){if(!d||d.data!==dataSimples())return;S.vpc=d.vpc||{};S.esc=d.esc||0;S.filt=d.filt||0;S.din=d.din||0;S.pix=d.pix||0;S.fiad=d.fiad||0;S.caixa=S.din+S.pix;S.atendidos=new Set(Object.keys(S.vpc).filter(n=>(S.vpc[n]||[]).some(v=>v.tipo!=='obs')));S.ultima=null;salvarEstado();updHdr()}
 
   const st=document.createElement('style');
