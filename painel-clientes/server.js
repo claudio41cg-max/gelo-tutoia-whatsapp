@@ -43,7 +43,10 @@ app.get("/api/gelo/inbox", async (req, res) => {
     const textBody = await rr.text();
     let data = {};
     try { data = JSON.parse(textBody || "{}"); } catch {}
-    if (!rr.ok) return res.status(502).json({ ok:false, error:"Worker inbox HTTP " + rr.status });
+    if (!rr.ok) {
+      console.error("Worker inbox falhou:", rr.status, String(textBody || "").slice(0, 1200));
+      return res.status(502).json({ ok:false, error:"Worker inbox HTTP " + rr.status, detail:String(textBody || "").slice(0, 600) });
+    }
     return res.json({ ok:true, vendas:Array.isArray(data?.vendas) ? data.vendas : [] });
   } catch (e) {
     console.error("Falha no proxy do inbox Gelo Tutóia:", e?.message || e);
