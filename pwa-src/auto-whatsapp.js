@@ -102,6 +102,26 @@
     }
     return total;
   }
+  let syncManualEmAndamento=false;
+  atualizarVendasWhatsApp=async function(filtro='Pendente'){
+    if(syncManualEmAndamento)return;
+    syncManualEmAndamento=true;
+    const btn=document.getElementById('btn-sync-wa');
+    if(btn){btn.disabled=true;btn.textContent='⏳ Buscando...'}
+    let timeoutId;
+    try{
+      const limite=new Promise(resolve=>{timeoutId=setTimeout(()=>resolve({ok:false,timeout:true}),12000)});
+      const resultado=await Promise.race([sincronizarInboxRemoto(true),limite]);
+      if(resultado?.timeout)toast('⚠ A busca demorou demais. Tente novamente.');
+    }catch(e){
+      toast('⚠ Não consegui atualizar o WhatsApp agora');
+    }finally{
+      if(timeoutId)clearTimeout(timeoutId);
+      syncManualEmAndamento=false;
+      try{telaVendasRecebidas(filtro)}catch(e){}
+    }
+  };
+
   setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
   sincronizarInboxRemoto=async function(mostrarAviso=true){
     const resultado=await syncAnterior(mostrarAviso);
