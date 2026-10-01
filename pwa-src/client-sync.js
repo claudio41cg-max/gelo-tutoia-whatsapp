@@ -23,6 +23,17 @@
     'Churrasco Tia':['Churrasco T']
   };
   let meta={};try{meta=JSON.parse(localStorage.getItem(META_KEY)||'{}')}catch(e){}
+  function renomearCliente(antigo,novo){
+    const i=CLIENTES.indexOf(antigo);
+    if(i>=0&&!CLIENTES.includes(novo))CLIENTES[i]=novo;
+    if(P_ESC[antigo]!==undefined&&P_ESC[novo]===undefined)P_ESC[novo]=P_ESC[antigo];
+    if(P_FILT[antigo]!==undefined&&P_FILT[novo]===undefined)P_FILT[novo]=P_FILT[antigo];
+  }
+  renomearCliente('Marcelo 1','Marcelo');
+  renomearCliente('Marcelo 2','Marcelo Cosmos');
+  renomearCliente('Gelo 22','Gelo Vascaino');
+  renomearCliente('Churrasco 1 L','Churrasco Lilian');
+  renomearCliente('Churrasco 2 T','Churrasco Tia');
   function tipo(n){return meta[n]?.tipo||(soFilt.includes(n)?'filtrado':soEsc.includes(n)?'escamas':'ambos')}
   function tipoLabel(n){const t=tipo(n);return t==='filtrado'?'FILTRADO':t==='escamas'?'ESCAMA':'AMBOS'}
   function ensure(nome,after,pe,pf){
