@@ -103,24 +103,8 @@
     }
     return total;
   }
-  let syncManualEmAndamento=false;
-  atualizarVendasWhatsApp=async function(filtro='Pendente'){
-    if(syncManualEmAndamento)return;
-    syncManualEmAndamento=true;
-    const btn=document.getElementById('btn-sync-wa');
-    if(btn){btn.disabled=true;btn.textContent='⏳ Buscando...'}
-    let timeoutId;
-    try{
-      const limite=new Promise(resolve=>{timeoutId=setTimeout(()=>resolve({ok:false,timeout:true}),30000)});
-      const resultado=await Promise.race([sincronizarInboxRemoto(true),limite]);
-      if(resultado?.timeout)toast('⚠ A busca demorou demais. Tente novamente.');
-    }catch(e){
-      toast('⚠ Não consegui atualizar o WhatsApp agora');
-    }finally{
-      if(timeoutId)clearTimeout(timeoutId);
-      syncManualEmAndamento=false;
-      try{telaVendasRecebidas(filtro)}catch(e){}
-    }
+  atualizarVendasWhatsApp=async function(){
+    return sincronizarInboxRemoto(false);
   };
 
 
@@ -154,12 +138,13 @@
   };
   telaVendasRecebidas=function(filtro='Confirmada'){
     if(filtro==='Pendente')filtro='Confirmada';
+    sincronizarInboxRemoto(false).catch(()=>{});
     const lista=vendasRecebidas.filter(v=>v.status===filtro);
     const conf=vendasRecebidas.filter(v=>v.status==='Confirmada').length;
     const ign=vendasRecebidas.filter(v=>v.status==='Ignorada').length;
     let h=`<div class="pg-hdr"><div class="pg-title">💬 VENDAS RECEBIDAS</div>
       <div class="pg-sub">Histórico das vendas do WhatsApp</div></div>
-      <button id="btn-sync-wa" class="act-btn" style="margin:0 14px 10px;width:calc(100% - 28px);border-color:rgba(22,137,255,.45);color:#9ed1ff" onclick="atualizarVendasWhatsApp('${filtro}')">🔄 ATUALIZAR WHATSAPP</button>
+      <div style="margin:0 14px 10px;padding:10px 12px;border-radius:12px;background:#12354f;color:#dff4ff;font-size:12px;text-align:center">✓ Sincronização automática ativa</div>
       <div class="tabs3" style="grid-template-columns:1fr 1fr">
         <button class="tab3 ${filtro==='Confirmada'?'active':''}" onclick="telaVendasRecebidas('Confirmada')">Confirmadas ${conf}</button>
         <button class="tab3 ${filtro==='Ignorada'?'active':''}" onclick="telaVendasRecebidas('Ignorada')">Ignoradas ${ign}</button>
@@ -180,7 +165,8 @@
   };
 
   let syncRapidoEmAndamento=false;
-  setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
+  setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},150);
+  setTimeout(()=>{try{sincronizarInboxRemoto(false)}catch(e){}},1800);
   async function sincronizarViaPainel(mostrarAviso){
     try{
       const r=await fetch(PANEL_INBOX_API+'?ts='+Date.now(),{cache:'no-store'});
