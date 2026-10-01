@@ -40,12 +40,32 @@ app.post("/api/gelo/reset-day", (req, res) => {
   try {
     const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
     const cutoff=Date.now();
-    writeSalesSyncState({date,cutoff});
+    const atual=readSalesSyncState();
+    writeSalesSyncState({date,cutoff,ignored_ids:atual.ignored_ids||[]});
     console.log("RESET_DAY_SYNC_CUTOFF", JSON.stringify({date,cutoff}));
     return res.json({ok:true,date,cutoff});
   } catch(e) {
     console.error("Falha ao gravar corte do dia:",e?.message||e);
     return res.status(500).json({ok:false,error:e?.message||"Falha ao reiniciar sincronização"});
+  }
+});
+
+app.post("/api/gelo/ignore-sale", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const messageId=String(req.body?.message_id||"").trim();
+    if(!messageId) return res.status(400).json({ok:false,error:"message_id obrigatório"});
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const atual=readSalesSyncState();
+    const ids=new Set(Array.isArray(atual.ignored_ids)?atual.ignored_ids.map(String):[]);
+    ids.add(messageId);
+    writeSalesSyncState({date:atual.date||date,cutoff:Number(atual.cutoff||0),ignored_ids:[...ids]});
+    console.log("IGNORE_SALE_MESSAGE_ID", messageId);
+    return res.json({ok:true,message_id:messageId});
+  } catch(e) {
+    console.error("Falha ao ignorar venda:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao ignorar venda"});
   }
 });
 
@@ -67,6 +87,7 @@ app.get("/api/gelo/inbox-local", (req, res) => {
       const t=Date.parse(s);
       return Number.isFinite(t)?t:0;
     };
+    const ignoredIds=new Set(Array.isArray(syncState.ignored_ids)?syncState.ignored_ids.map(String):[]);
     const vistos = new Set();
     const mensagens = [];
     for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
@@ -75,6 +96,7 @@ app.get("/api/gelo/inbox-local", (req, res) => {
       if (localDate(ts) !== hoje) continue;
       if (afterMs && (!tsMs || tsMs <= afterMs)) continue;
       const id = String(m?.message_id || "").trim();
+      if(id && ignoredIds.has(id)) continue;
       const texto = String(m?.transcricao || m?.texto || "").trim();
       if (!texto) continue;
       const dedupe = id || [ts, texto, m?.sender_jid || "", m?.sender_alt || ""].join("|");
@@ -128,11 +150,11 @@ if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FIL
 function readSalesSyncState() {
   try {
     const s=JSON.parse(fs.readFileSync(SALES_SYNC_STATE_FILE,"utf8")||"{}");
-    return {date:String(s?.date||""),cutoff:Number(s?.cutoff||0)||0};
-  } catch { return {date:"",cutoff:0}; }
+    return {date:String(s?.date||""),cutoff:Number(s?.cutoff||0)||0,ignored_ids:Array.isArray(s?.ignored_ids)?s.ignored_ids.map(String):[]};
+  } catch { return {date:"",cutoff:0,ignored_ids:[]}; }
 }
 function writeSalesSyncState(state) {
-  const clean={date:String(state?.date||""),cutoff:Number(state?.cutoff||0)||0};
+  const clean={date:String(state?.date||""),cutoff:Number(state?.cutoff||0)||0,ignored_ids:Array.isArray(state?.ignored_ids)?[...new Set(state.ignored_ids.map(String))].slice(-5000):[]};
   fs.writeFileSync(SALES_SYNC_STATE_FILE,JSON.stringify(clean,null,2));
   return clean;
 }
