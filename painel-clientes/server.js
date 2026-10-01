@@ -699,32 +699,48 @@ app.post("/api/clients/:id/disconnect", async (req, res) => {
 
 async function logTafarelTodayOnce() {
   try {
-    if (!HELPER_TAFA_PHONE) return;
-    const r = await fetch(GELO_INBOX_URL, { headers: { "Accept": "application/json" } });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d?.ok || !Array.isArray(d?.vendas)) {
-      console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:false, erro:"inbox indisponivel" }));
+    const alvo = "2026-09-30";
+    const business = await findExistingBusinessUser();
+    const token = String(business?.token || business?.Token || "").trim();
+    if (!token) {
+      console.log("AGENT_TAFA_HISTORY", JSON.stringify({ ok:false, erro:"sem token do WhatsApp principal" }));
       return;
     }
-    const alvo = "2026-09-30";
-    const vendas = d.vendas.filter(v => {
-      const remetente = String(v?.remetente || "").replace(/\D/g, "");
-      const dt = new Date(v?.recebido_em);
-      if (Number.isNaN(dt.getTime())) return false;
-      const dia = [dt.getFullYear(), String(dt.getMonth()+1).padStart(2,"0"), String(dt.getDate()).padStart(2,"0")].join("-");
-      return remetente === HELPER_TAFA_PHONE && dia === alvo;
-    }).map(v => ({
-      recebido_em:v.recebido_em,
-      transcricao:v.transcricao,
-      cliente:v.cliente,
-      qtd:v.qtd,
-      tipo:v.tipo,
-      pagamento:v.pagamento,
-      confianca:v.confianca
-    })).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
-    console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:true, data:alvo, total:vendas.length, vendas }));
+
+    const jids = helperJidsByName("Tafarel");
+    const detalhes = [];
+    const ids = new Set();
+
+    for (const jid of jids) {
+      try {
+        const h = await wuz("/chat/history?chat_jid=" + encodeURIComponent(jid) + "&limit=1000", { headers:userHeaders(token) });
+        const arr = Array.isArray(h?.data) ? h.data : Array.isArray(h) ? h : [];
+        const doDia = arr.filter(m => localDate(m?.timestamp) === alvo);
+        detalhes.push({ jid, total_historico:arr.length, total_no_dia:doDia.length, tipos:doDia.reduce((a,m)=>{const k=String(m?.message_type||"desconhecido");a[k]=(a[k]||0)+1;return a;},{}) });
+        for (const m of doDia) if (m?.message_id) ids.add(String(m.message_id));
+      } catch (e) {
+        detalhes.push({ jid, erro:String(e?.message||e), status:e?.status||null });
+      }
+    }
+
+    const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
+    const inboxData = await inboxResp.json().catch(()=>({}));
+    const inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
+    const cruzadas = inbox.filter(v => ids.has(String(v?.remote_key||"").replace(/^mensagem:/,"")));
+
+    console.log("AGENT_TAFA_HISTORY", JSON.stringify({
+      ok:true,
+      data:alvo,
+      jids,
+      historico:detalhes,
+      ids_no_dia:ids.size,
+      inbox_total:inbox.length,
+      vendas_cruzadas:cruzadas.length,
+      amostra_ids:[...ids].slice(0,12),
+      amostra_inbox:inbox.slice(0,8).map(v=>String(v?.remote_key||"").replace(/^mensagem:/,""))
+    }));
   } catch (e) {
-    console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:false, erro:String(e?.message||e) }));
+    console.log("AGENT_TAFA_HISTORY", JSON.stringify({ ok:false, erro:String(e?.message||e) }));
   }
 }
 
