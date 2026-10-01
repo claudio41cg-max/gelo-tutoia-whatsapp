@@ -12,6 +12,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const EXTERNAL_STATE_FILE = path.join(DATA_DIR, "external-controls.json");
 const WUZAPI_HISTORY_FILE = path.join(DATA_DIR, "wuzapi-history.json");
+const SALES_SYNC_STATE_FILE = path.join(DATA_DIR, "sales-sync-state.json");
 const WUZAPI_URL = (process.env.WUZAPI_URL || "https://wuzapi-test-production.up.railway.app").replace(/\/$/, "");
 const ADMIN_TOKEN = process.env.WUZAPI_ADMIN_TOKEN || "";
 const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
@@ -33,12 +34,30 @@ const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || 
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
 
+app.post("/api/gelo/reset-day", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const cutoff=Date.now();
+    writeSalesSyncState({date,cutoff});
+    console.log("RESET_DAY_SYNC_CUTOFF", JSON.stringify({date,cutoff}));
+    return res.json({ok:true,date,cutoff});
+  } catch(e) {
+    console.error("Falha ao gravar corte do dia:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao reiniciar sincronização"});
+  }
+});
+
 app.get("/api/gelo/inbox-local", (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Cache-Control", "no-store");
   try {
     const hoje = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
-    const afterMs = Math.max(0, Number(req.query?.after || 0) || 0);
+    const syncState=readSalesSyncState();
+    const serverCutoff=syncState.date===hoje ? Number(syncState.cutoff||0) : 0;
+    const clientAfter=Math.max(0, Number(req.query?.after || 0) || 0);
+    const afterMs=Math.max(serverCutoff,clientAfter);
     const toMs = v => {
       if (v == null || v === "") return 0;
       if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
@@ -72,7 +91,7 @@ app.get("/api/gelo/inbox-local", (req, res) => {
       });
     }
     mensagens.sort((a,b)=>(a.timestamp_ms||0)-(b.timestamp_ms||0));
-    return res.json({ ok:true, after:afterMs, mensagens:mensagens.slice(-500) });
+    return res.json({ ok:true, after:afterMs, server_cutoff:serverCutoff, mensagens:mensagens.slice(-500) });
   } catch (e) {
     console.error("Falha no inbox local do Gelo Tutóia:", e?.message || e);
     return res.status(500).json({ ok:false, error:e?.message || "Falha ao ler histórico local" });
@@ -104,7 +123,19 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: false, manualMode: true }, null, 2));
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
+if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 
+function readSalesSyncState() {
+  try {
+    const s=JSON.parse(fs.readFileSync(SALES_SYNC_STATE_FILE,"utf8")||"{}");
+    return {date:String(s?.date||""),cutoff:Number(s?.cutoff||0)||0};
+  } catch { return {date:"",cutoff:0}; }
+}
+function writeSalesSyncState(state) {
+  const clean={date:String(state?.date||""),cutoff:Number(state?.cutoff||0)||0};
+  fs.writeFileSync(SALES_SYNC_STATE_FILE,JSON.stringify(clean,null,2));
+  return clean;
+}
 function readClients() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8") || "[]"); }
   catch { return []; }
