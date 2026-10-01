@@ -21,6 +21,10 @@ const INTERNAL_SALE_SENDERS = String(process.env.INTERNAL_SALE_SENDERS || "").sp
 const LEGACY_SEED_PHONE = "5521991777811";
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/$/, "");
 const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/agent/reply");
+const AGENT_READ_TOKEN = String(process.env.AGENT_READ_TOKEN || "");
+const HELPER_TAFA_PHONE = String(process.env.HELPER_TAFA_PHONE || "").replace(/\D/g, "");
+const HELPER_MAIRA_PHONE = String(process.env.HELPER_MAIRA_PHONE || "").replace(/\D/g, "");
+const GELO_INBOX_URL = String(process.env.GELO_INBOX_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/inbox");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -221,6 +225,60 @@ async function ensureSeedClient() {
   writeClients(clients);
   console.log("Cliente de teste preparado:", businessName, SEED_CLIENT_PHONE);
 }
+
+function agentAuthorized(req) {
+  const h = String(req.headers["x-agent-token"] || "");
+  return !!AGENT_READ_TOKEN && h === AGENT_READ_TOKEN;
+}
+function helperPhoneByName(nome) {
+  const n = String(nome || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  if (["tafa","tafarel","luciano","luciano rocha"].includes(n)) return HELPER_TAFA_PHONE;
+  if (["maira","maíra","flavio","flávio"].includes(n)) return HELPER_MAIRA_PHONE;
+  return "";
+}
+app.get("/api/agent/vendas-ajudante", async (req, res) => {
+  try {
+    if (!agentAuthorized(req)) return res.status(401).json({ error: "Não autorizado" });
+    const helper = String(req.query?.helper || "").trim();
+    const phone = helperPhoneByName(helper);
+    if (!phone) return res.status(400).json({ error: "Ajudante inválido" });
+
+    const data = String(req.query?.data || "").trim();
+    const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : new Date().toISOString().slice(0,10);
+
+    const r = await fetch(GELO_INBOX_URL, { headers: { "Accept": "application/json" } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d?.ok || !Array.isArray(d?.vendas)) {
+      return res.status(502).json({ error: "Falha ao consultar caixa do Gelo Tutóia" });
+    }
+
+    const sameDay = iso => {
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return false;
+      const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,"0"), day = String(dt.getDate()).padStart(2,"0");
+      return `${y}-${m}-${day}` === targetDate;
+    };
+
+    const vendas = d.vendas.filter(v => {
+      const remetente = String(v?.remetente || "").replace(/\D/g, "");
+      return remetente === phone && sameDay(v?.recebido_em);
+    }).map(v => ({
+      recebido_em: v.recebido_em,
+      transcricao: v.transcricao,
+      cliente: v.cliente,
+      qtd: v.qtd,
+      tipo: v.tipo,
+      pagamento: v.pagamento,
+      confianca: v.confianca,
+      remote_key: v.remote_key
+    })).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
+
+    res.json({ ok: true, helper, data: targetDate, total: vendas.length, vendas });
+  } catch (e) {
+    console.error("Falha no agente de vendas do ajudante:", e?.message || e);
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, wuzapiConfigured: !!ADMIN_TOKEN, wuzapiUrl: WUZAPI_URL });
