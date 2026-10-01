@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const EXTERNAL_STATE_FILE = path.join(DATA_DIR, "external-controls.json");
+const WUZAPI_HISTORY_FILE = path.join(DATA_DIR, "wuzapi-history.json");
 const WUZAPI_URL = (process.env.WUZAPI_URL || "https://wuzapi-test-production.up.railway.app").replace(/\/$/, "");
 const ADMIN_TOKEN = process.env.WUZAPI_ADMIN_TOKEN || "";
 const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
@@ -31,6 +32,7 @@ const GELO_INBOX_URL = String(process.env.GELO_INBOX_URL || "https://gelo-tutoia
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: true, manualMode: false }, null, 2));
+if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
 
 function readClients() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8") || "[]"); }
@@ -51,6 +53,20 @@ function writeExternalState(state) {
   const clean = { aiEnabled: state.aiEnabled !== false, manualMode: !!state.manualMode };
   fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify(clean, null, 2));
   return clean;
+}
+function readWuzapiHistory() {
+  try {
+    const arr = JSON.parse(fs.readFileSync(WUZAPI_HISTORY_FILE, "utf8") || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function appendWuzapiHistory(entry) {
+  const id = String(entry?.message_id || "").trim();
+  const all = readWuzapiHistory();
+  if (id && all.some(x => String(x?.message_id || "") === id)) return;
+  all.push(entry);
+  const recent = all.slice(-5000);
+  fs.writeFileSync(WUZAPI_HISTORY_FILE, JSON.stringify(recent, null, 2));
 }
 
 function migrateLegacyClaroNumber() {
@@ -329,6 +345,26 @@ app.get("/api/agent/historico-dia", async (req, res) => {
 
     const historico = [];
     const vistos = new Set();
+
+    for (const m of readWuzapiHistory()) {
+      if (m?.is_group) continue;
+      if (localDate(m?.timestamp) !== targetDate) continue;
+      const id = String(m?.message_id || "");
+      const dedupe = id || [m?.pessoa || "", m?.timestamp || "", m?.tipo || "", m?.texto || ""].join("|");
+      if (vistos.has(dedupe)) continue;
+      vistos.add(dedupe);
+      historico.push({
+        pessoa:String(m?.pessoa || "Remetente"),
+        phone:String(m?.sender_alt || m?.sender_jid || "").replace(/@.*/, "").replace(/\D/g, ""),
+        message_id:id,
+        timestamp:m?.timestamp || "",
+        message_type:m?.tipo || "",
+        text_content:m?.texto || "",
+        media_link:"",
+        chat_jid:m?.chat_jid || "",
+        sender_jid:m?.sender_jid || ""
+      });
+    }
 
     for (const jid of jids) {
       try {
@@ -696,6 +732,20 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       msg?.imageMessage?.caption ||
       msg?.videoMessage?.caption ||
       "";
+
+    appendWuzapiHistory({
+      message_id:String(info?.ID || info?.Id || info?.id || ""),
+      timestamp:String(info?.Timestamp || new Date().toISOString()),
+      pessoa:String(info?.PushName || "").trim() || "Remetente",
+      sender_jid:String(info?.Sender || ""),
+      sender_alt:String(info?.SenderAlt || ""),
+      chat_jid:String(info?.Chat || ""),
+      tipo:String(info?.Type || ""),
+      texto:String(text || ""),
+      is_from_me:info?.IsFromMe === true,
+      is_group:info?.IsGroup === true,
+      origem:"wuzapi"
+    });
 
     const isIncoming = info?.IsFromMe === false;
     const isPrivateChat = info?.IsGroup === false;
