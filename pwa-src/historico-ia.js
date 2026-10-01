@@ -181,7 +181,7 @@ function instalarBotao(){
 
           const r=await timeoutPromise(
             window.GeloTutoiaGPT.relatorioPorPedido(text),
-            20000,
+            60000,
             'A consulta do histórico demorou demais'
           );
           const resposta=String(r&&r.reply||'').trim();
