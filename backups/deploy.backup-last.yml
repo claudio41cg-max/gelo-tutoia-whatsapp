@@ -39,7 +39,7 @@ jobs:
           premium=open('pwa-src/premium-ui.css',encoding='utf-8').read()
           quality='''<style id="hq-ui">html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}button,.cli-btn,.quick-btn,.nav-btn{image-rendering:auto}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}@media(min-resolution:2dppx){.cli-btn,.quick-btn,.nav-btn{border-width:1px}}</style>'''
           html=html.replace('</head>','<style id="premium-ui">'+premium+'</style></head>')
-          html=html.replace('</body>',quality+'<script>'+enhance+'</script><script>'+assistant+'</script><script>'+gptbridge+'</script><script>'+historicoia+'</script><script>'+automatico+'</script><script>'+ui2+'</script><script>'+ui3+'</script><script>'+caderno+'</script></body>')
+          html=html.replace('</body>',quality+'<script>'+enhance+'</script><script>'+assistant+'</script><script>'+gptbridge+'</script><script>'+automatico+'</script><script>'+ui2+'</script><script>'+ui3+'</script><script>'+caderno+'</script><script>'+historicoia+'</script></body>')
           html=html.replace('vendasRecebidas.vilter(', 'vendasRecebidas.filter(')
           html=html.replace("origem:'WhatsApp Automático',", "origem:'WhatsApp Automático',auto_elegivel:x.auto_elegivel===true,")
           html=html.replace("const pag=['Dinheiro','PIX','Fiado'].includes(x.pagamento)?x.pagamento:null;", "const pag=['Dinheiro','PIX','Fiado'].includes(x.pagamento)?x.pagamento:'Não informado';")
