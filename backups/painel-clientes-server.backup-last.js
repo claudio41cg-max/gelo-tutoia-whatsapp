@@ -31,6 +31,7 @@ const GELO_INBOX_URL = String(process.env.GELO_INBOX_URL || "https://gelo-tutoia
 const SALON_SEED_NAME = String(process.env.SALON_SEED_NAME || "").trim();
 const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || "").trim();
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
+const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
@@ -340,6 +341,17 @@ async function ensureSalonSeedClient() {
     // Preserva os controles escolhidos no painel após o primeiro cadastro.
     if (typeof existing.aiEnabled !== "boolean") { existing.aiEnabled = false; changed = true; }
     if (typeof existing.manualMode !== "boolean") { existing.manualMode = true; changed = true; }
+
+    // Ativação única solicitada pelo proprietário. Depois disso, futuras
+    // alterações manuais no painel continuam sendo respeitadas.
+    if (SALON_SEED_ACTIVATE_V1 && existing.salonAiActivatedV1 !== true) {
+      existing.aiEnabled = true;
+      existing.manualMode = false;
+      existing.salonAiActivatedV1 = true;
+      changed = true;
+      console.log("IA do salão ativada uma vez:", SALON_SEED_BUSINESS_NAME);
+    }
+
     if (changed) writeClients(clients);
     return;
   }
