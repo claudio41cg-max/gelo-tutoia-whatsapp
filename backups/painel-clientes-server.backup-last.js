@@ -258,9 +258,7 @@ app.get("/api/agent/vendas-ajudante", async (req, res) => {
   try {
     if (!agentAuthorized(req)) return res.status(401).json({ error: "Não autorizado" });
     const helper = String(req.query?.helper || "").trim();
-    const phone = helperPhoneByName(helper);
-    const jids = helperJidsByName(helper);
-    if (!phone || !jids.length) return res.status(400).json({ error: "Ajudante inválido" });
+    const helperNorm = helper.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
     const data = String(req.query?.data || "").trim();
     const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data)
@@ -270,6 +268,17 @@ app.get("/api/agent/vendas-ajudante", async (req, res) => {
     const business = await findExistingBusinessUser();
     const token = String(business?.token || business?.Token || "").trim();
     if (!token) return res.status(503).json({ error: "WhatsApp principal sem acesso ao histórico" });
+
+    const ownerRequested = ["claudio","cláudio","dinho","proprietario","proprietário"].includes(helperNorm);
+    const businessJid = String(business?.jid || business?.Jid || business?.JID || "").trim();
+    const businessPhone = businessJid.replace(/@.*/, "").replace(/\D/g, "");
+
+    const phone = ownerRequested ? businessPhone : helperPhoneByName(helper);
+    const jids = ownerRequested
+      ? [...new Set([businessJid, businessPhone ? businessPhone + "@s.whatsapp.net" : ""].filter(Boolean))]
+      : helperJidsByName(helper);
+
+    if (!phone || !jids.length) return res.status(400).json({ error: "Pessoa inválida para consulta" });
 
     const historico = [];
     for (const jid of jids) {
