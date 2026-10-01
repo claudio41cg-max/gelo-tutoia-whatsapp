@@ -80,11 +80,13 @@ function normalizarEventoWuzapi(body={}){
   const e=p?.event||p?.Event||{};
   const info=e?.Info||e?.info||p?.Info||p?.info||{};
   const m=e?.Message||e?.message||p?.Message||p?.message||{};
-  const deMim=Boolean(info?.IsFromMe??info?.isFromMe??false);
+  const forwardedTest=body?.forwardedToGeloTest===true;
+  const deMim=forwardedTest?false:Boolean(info?.IsFromMe??info?.isFromMe??false);
   const chat=jidTexto(primeiroValor(info?.Chat,info?.chat));
   const senderAlt=jidTexto(primeiroValor(info?.SenderAlt,info?.senderAlt));
   const sender=jidTexto(primeiroValor(info?.Sender,info?.sender));
-  const remetente=senderAlt||sender||chat;
+  const forwardedSender=String(body?.forwardedTestSenderPhone||"").replace(/\D/g,"");
+  const remetente=forwardedSender||senderAlt||sender||chat;
   const isGroup=Boolean(info?.IsGroup??info?.isGroup??false)||/@g\.us$/i.test(chat);
   const isBroadcast=/@broadcast$/i.test(chat)||/^status@broadcast$/i.test(chat);
   const id=String(primeiroValor(info?.ID,info?.Id,info?.id,p?.id,p?.ID)||"");
@@ -206,12 +208,14 @@ if(wz?.wuzapi){
   // O Worker principal é o ponto de entrada do Gelo Tutóia.
   // Repassa uma cópia ao painel de agentes sem alterar o fluxo de vendas.
   try{
+    if(!body?.forwardedToGeloTest){
     const rr=await fetch("https://painel-clientes-production.up.railway.app/api/webhooks/wuzapi/external-gelo-tutoia",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify(body)
     });
     if(!rr.ok)console.log("Gelo Tutóia - painel recebeu com HTTP",rr.status);
+    }
   }catch(e){
     console.log("Gelo Tutóia - falha ao repassar ao painel:",String(e));
   }
