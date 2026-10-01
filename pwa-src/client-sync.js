@@ -2,8 +2,8 @@
 (()=>{
   const API='https://gelo-tutoia-whatsapp.claudio41cg.workers.dev';
   const META_KEY='gelo_tutoia_cliente_meta_v1';
-  const soFilt=['Marcelo 1','Marcelo 2','Tia','Sr. Gilson','Sou JOY','Café','Angélica'];
-  const soEsc=['Padaria BMG','Alex Rua 22','Peixaria Ronald','Peixaria Tiago','Peixaria Pará','Alex Campinho','Marcão','Márcio','Alex Laranja','Chop Feira','Churrasco Cosmos','Luiz Peixaria','Padaria Paciência','Lilian','Churrasco 1 L','Bruno','Chatuba','Churrasco 2 T','Peixaria Bacaxá','Custódio','Gelo 22','Jonny Feira'];
+  const soFilt=['Marcelo','Marcelo Cosmos','Tia','Sr. Gilson','Sou JOY','Café','Angélica'];
+  const soEsc=['Padaria BMG','Alex Rua 22','Peixaria Ronald','Peixaria Guacha','Peixaria Tiago','Peixaria Pará','Alex Campinho','Marcão','Márcio','Alex Laranja','Chop Feira','Churrasco Cosmos','Luiz Peixaria','Padaria Paciência','Lilian','Churrasco Lilian','Bruno','Chatuba','Churrasco Tia','Peixaria Bacaxá','Custódio','Gelo Vascaino','Jonny Feira'];
   const apelidos={
     'Sou JOY':['Joy','Joi','Restaurante Joy','Restaurante Joi'],
     'Café':['Loja do Café','Barraca do Café','Cafeteria'],
@@ -13,7 +13,14 @@
     'Peixaria Bacaxá':['Jorge','Seu Jorge','Abacaxi'],
     'Custódio':['Escorinho','Peixaria do Escorinho'],
     'Jonny Feira':['Joni Feira','Jonne Feira','Abelha','Cara da Feira'],
-    'Bruno':['Peixaria Bruno','Encanamento','Peixaria Encanamento']
+    'Bruno':['Peixaria Bruno','Encanamento','Peixaria Encanamento'],
+    'Peixaria Guacha':['Guacha','Peixaria Guacha'],
+    'Nova Barraca Azul':['Barraca Caldo Azul','Barraca Azul','Barraca da Direita','Barraca a Direita'],
+    'Marcelo':['Barraca do Marcelo','Caldo do Marcelo'],
+    'Marcelo Cosmos':['Marcelo Cosmo'],
+    'Gelo Vascaino':['Trailer Vascaino','Gelo 22'],
+    'Churrasco Lilian':['Churrasco L'],
+    'Churrasco Tia':['Churrasco T']
   };
   let meta={};try{meta=JSON.parse(localStorage.getItem(META_KEY)||'{}')}catch(e){}
   function tipo(n){return meta[n]?.tipo||(soFilt.includes(n)?'filtrado':soEsc.includes(n)?'escamas':'ambos')}
@@ -23,7 +30,7 @@
     if(pe>0)P_ESC[nome]=pe;if(pf>0)P_FILT[nome]=pf;
     meta[nome]={tipo:tipo(nome),apelidos:meta[nome]?.apelidos||apelidos[nome]||[]};
   }
-  ensure('Sou JOY','Alex Campinho',12,12);ensure('Café','Lilian',12,12);ensure('Angélica','Churrasco 2 T',13,13);
+  ensure('Sou JOY','Alex Campinho',12,12);ensure('Café','Lilian',12,12);ensure('Angélica','Churrasco Tia',13,13);ensure('Peixaria Guacha','Peixaria Ronald',0,0);ensure('Nova Barraca Azul','Caldo Inhoaíba',8,13);
   for(const n of CLIENTES)meta[n]={tipo:tipo(n),apelidos:meta[n]?.apelidos||apelidos[n]||[]};
   localStorage.setItem(META_KEY,JSON.stringify(meta));
   async function sync(){
