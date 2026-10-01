@@ -654,8 +654,7 @@ async function logTafarelTodayOnce() {
       console.log("AGENT_TAFA_RESULT", JSON.stringify({ ok:false, erro:"inbox indisponivel" }));
       return;
     }
-    const hoje = new Date();
-    const alvo = [hoje.getFullYear(), String(hoje.getMonth()+1).padStart(2,"0"), String(hoje.getDate()).padStart(2,"0")].join("-");
+    const alvo = "2026-09-30";
     const vendas = d.vendas.filter(v => {
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       const dt = new Date(v?.recebido_em);
