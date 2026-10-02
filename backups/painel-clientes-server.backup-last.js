@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { DatabaseSync } = require("node:sqlite");
+const { interpretarVendas } = require("./sales-parser.js");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
@@ -327,6 +328,37 @@ function salesQueueStats(){
   if(!salesDb)return{};
   const rows=salesDb.prepare("SELECT status,COUNT(*) total FROM sales_queue GROUP BY status").all();
   return Object.fromEntries(rows.map(r=>[r.status,Number(r.total)||0]));
+}
+function ingestSaleTextDirect({messageId,text,timestamp,sender,senderName}={}){
+  const raw=String(text||"").trim();
+  const mid=String(messageId||"").trim();
+  if(!raw||!mid)return {inserted:0,existing:0,total:0};
+  const vendas=interpretarVendas(raw).filter(v=>v&&v.cliente&&Number(v.total_sacos)>0);
+  let inserted=0,existing=0,total=0;
+  vendas.forEach((v,idx)=>{
+    const baseId="mensagem:"+mid;
+    const base={
+      remote_key:baseId,
+      message_id:mid,
+      recebido_em:String(timestamp||new Date().toISOString()),
+      transcricao:raw,
+      cliente:String(v.cliente||""),
+      pagamento:String(v.pagamento||"Não informado"),
+      confianca:v.precisa_revisao?"revisar":"alta",
+      remetente:String(sender||""),
+      nome_remetente:String(senderName||"")
+    };
+    for(const [tipo,q,suf] of [["esc",v.escamas,"esc"],["filt",v.filtrado,"filt"]]){
+      if(Number(q)<=0)continue;
+      const remoteId=vendas.length===1?(baseId+":"+suf):(baseId+":v"+idx+":"+suf);
+      const r=upsertPendingSale({...base,remote_id:remoteId,qtd:Number(q),tipo});
+      total++;
+      if(r==="inserted")inserted++;
+      else if(r==="existing")existing++;
+    }
+  });
+  if(total)console.log("SALES_QUEUE_DIRECT_INGEST",JSON.stringify({messageId:mid,inserted,existing,total,text:raw.slice(0,120)}));
+  return {inserted,existing,total};
 }
 
 function readSalesSyncState() {
@@ -1444,6 +1476,30 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       origem:"wuzapi"
     });
 
+    const directEntry={
+      message_id:String(info?.ID || info?.Id || info?.id || ""),
+      timestamp:String(info?.Timestamp || new Date().toISOString()),
+      pessoa:String(info?.PushName || "").trim() || "Remetente",
+      sender_jid:String(info?.Sender || ""),
+      sender_alt:String(info?.SenderAlt || ""),
+      chat_jid:String(info?.Chat || ""),
+      texto:String(text || ""),
+      transcricao:String(text || ""),
+      is_from_me:info?.IsFromMe === true,
+      is_group:info?.IsGroup === true
+    };
+    if(info?.IsFromMe===false && info?.IsGroup===false && String(text||"").trim() && isAuthorizedHistoryEntry(directEntry)){
+      try{
+        ingestSaleTextDirect({
+          messageId:directEntry.message_id,
+          text,
+          timestamp:directEntry.timestamp,
+          sender:directEntry.sender_alt||directEntry.sender_jid,
+          senderName:directEntry.pessoa
+        });
+      }catch(e){console.error("Falha no lançamento direto da venda recebida:",e?.message||e)}
+    }
+
     const isIncoming = info?.IsFromMe === false;
     const isPrivateChat = info?.IsGroup === false;
     const senderPhone = String(info?.SenderAlt || "")
@@ -1612,6 +1668,16 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
         is_group:false,
         origem:"relay-local"
       });
+
+      try{
+        ingestSaleTextDirect({
+          messageId:forwardedId,
+          text:forwardedText,
+          timestamp:forwardedTs,
+          sender:forwardedPhone,
+          senderName:String(c.businessName || c.name || "Remetente")
+        });
+      }catch(e){console.error("Falha no lançamento direto da venda interna:",e?.message||e)}
 
       await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
         method: "POST",
