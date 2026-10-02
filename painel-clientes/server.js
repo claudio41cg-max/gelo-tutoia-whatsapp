@@ -1520,57 +1520,73 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     /@s\.whatsapp\.net$/i.test(senderAltJid) ? senderAltJid :
     senderPhone;
 
-  // Se esta instância estiver enviando uma mensagem para o WhatsApp principal do Gelo Tutóia
-  // (caso de teste Claro -> TIM), encaminha uma cópia ao Worker de vendas.
+  // Se uma instância interna/autorizada estiver enviando uma venda, encaminha ao Worker
+  // usando o número real do remetente. Isso cobre eventos em que o destino chega apenas como LID
+  // e o WuzAPI não fornece RecipientAlt.
   try {
     const recipientPhone = String(info?.RecipientAlt || "")
       .replace("@s.whatsapp.net", "")
       .replace(/\D/g, "");
-    if (info?.IsFromMe === true && recipientPhone && c?.phone) {
+    const outboundSenderPhone = String(info?.SenderAlt || info?.Sender || "")
+      .replace(/@.*/, "")
+      .replace(/\D/g, "");
+    const ownClientPhone = String(c?.phone || "").replace(/\D/g, "");
+    const forwardedPhone = outboundSenderPhone || ownClientPhone;
+    const forwardedText = String(text || "").trim();
+    const looksLikeSale = /\b\d{1,3}\b/.test(forwardedText) &&
+      /(escam|filtrad|saco|sacos|pix|fiad|dinheiro|pagou|pago)/i.test(forwardedText);
+    const senderAllowed = !!forwardedPhone && (
+      forwardedPhone === String(SEED_CLIENT_PHONE || "").replace(/\D/g, "") ||
+      INTERNAL_SALE_SENDERS.includes(forwardedPhone) ||
+      forwardedPhone === ownClientPhone
+    );
+
+    let destinationIsMain = false;
+    if (info?.IsFromMe === true && recipientPhone) {
       const business = await findExistingBusinessUser();
       const businessJid = String(business?.jid || business?.Jid || "")
         .replace(/@.*/, "")
         .replace(/\D/g, "");
-      if (businessJid && recipientPhone === businessJid) {
-        const forwardedPhone=String(c.phone || "").replace(/\D/g, "");
-        const forwardedId=String(info?.ID || info?.Id || info?.id || ("relay-"+Date.now()));
-        const forwardedTs=String(info?.Timestamp || new Date().toISOString());
-        const forwardedText=String(text || "").trim();
+      destinationIsMain = !!businessJid && recipientPhone === businessJid;
+    }
 
-        // Guarda uma cópia autorizada no Railway antes do Worker.
-        // Assim o app continua recebendo vendas mesmo se o Cloudflare KV estiver indisponível
-        // e sem depender do LID interno que aparece no WhatsApp de destino.
-        if (forwardedPhone && forwardedText) {
-          appendWuzapiHistory({
-            message_id:forwardedId,
-            timestamp:forwardedTs,
-            pessoa:String(c.businessName || c.name || "Remetente"),
-            sender_jid:forwardedPhone+"@s.whatsapp.net",
-            sender_alt:forwardedPhone+"@s.whatsapp.net",
-            chat_jid:forwardedPhone+"@s.whatsapp.net",
-            tipo:String(info?.Type || "text"),
-            texto:forwardedText,
-            transcricao:forwardedText,
-            is_from_me:false,
-            is_group:false,
-            origem:"relay-local"
-          });
-        }
+    // Se RecipientAlt sumir por causa do LID, aceita apenas texto com formato de venda
+    // vindo de uma instância interna conhecida. O Worker continua sendo quem interpreta.
+    const shouldRelay = info?.IsFromMe === true && senderAllowed && forwardedText &&
+      (destinationIsMain || (!recipientPhone && looksLikeSale));
 
-        await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...payload,
-            forwardedToGeloTest: true,
-            forwardedTestSenderPhone: forwardedPhone
-          })
-        });
-        console.log("Teste enviado ao Gelo Tutóia a partir de", c.businessName || c.name);
-      }
+    if (shouldRelay) {
+      const forwardedId=String(info?.ID || info?.Id || info?.id || ("relay-"+Date.now()));
+      const forwardedTs=String(info?.Timestamp || new Date().toISOString());
+
+      appendWuzapiHistory({
+        message_id:forwardedId,
+        timestamp:forwardedTs,
+        pessoa:String(c.businessName || c.name || "Remetente"),
+        sender_jid:forwardedPhone+"@s.whatsapp.net",
+        sender_alt:forwardedPhone+"@s.whatsapp.net",
+        chat_jid:String(info?.Chat || forwardedPhone+"@s.whatsapp.net"),
+        tipo:String(info?.Type || "text"),
+        texto:forwardedText,
+        transcricao:forwardedText,
+        is_from_me:false,
+        is_group:false,
+        origem:"relay-local"
+      });
+
+      await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          forwardedToGeloTest: true,
+          forwardedTestSenderPhone: forwardedPhone
+        })
+      });
+      console.log("Venda interna enviada ao Worker a partir de", c.businessName || c.name, forwardedPhone);
     }
   } catch (e) {
-    console.error("Falha ao encaminhar teste para o Gelo Tutóia:", e?.message || e);
+    console.error("Falha ao encaminhar venda interna ao Worker:", e?.message || e);
   }
 
   const clientOwnPhone = String(c?.phone || "").replace(/\D/g, "");
