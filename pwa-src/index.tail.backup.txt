@@ -1,4 +1,4 @@
-unction enviarWARelatorio(){
+function enviarWARelatorio(){
   const bruto=S.din+S.pix+S.fiad;
   const liqTotal=bruto-S.desp;
   const totalSacos=S.esc+S.filt;
@@ -73,7 +73,7 @@ window.addEventListener('beforeunload',()=>salvarEstado());
 setInterval(()=>salvarEstado(), 5000);
 setTimeout(montarBottomNav,0);
 setTimeout(()=>sincronizarInboxRemoto(false),1500);
-setInterval(()=>sincronizarInboxRemoto(false),60000);
+setInterval(()=>{if(!document.hidden)sincronizarInboxRemoto(false)},5000);
 </script>
 
 <script>
