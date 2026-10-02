@@ -94,9 +94,73 @@ async function token(){
   return localStorage.getItem(TOKEN_KEY)||login();
 }
 
+const APP_SALES_HISTORY_KEY='gelo_tutoia_historico_dias';
+
+function salesHistoryContext(maxDays=120){
+  let dias=[];
+  try{
+    const raw=localStorage.getItem(APP_SALES_HISTORY_KEY);
+    dias=raw?JSON.parse(raw):[];
+  }catch(e){dias=[]}
+  if(!Array.isArray(dias))dias=[];
+  dias=dias.slice(0,Math.max(1,Number(maxDays)||120));
+
+  const clientes={};
+  const porDia=[];
+  for(const dia of dias){
+    const data=String(dia?.data||'');
+    let escDia=0,filtDia=0,totalDia=0,valorDia=0;
+    const vpc=dia?.vpc&&typeof dia.vpc==='object'?dia.vpc:{};
+    for(const [nome,lista] of Object.entries(vpc)){
+      if(!Array.isArray(lista))continue;
+      if(!clientes[nome])clientes[nome]={cliente:nome,escamas:0,filtrado:0,total_sacos:0,valor_total:0,vendas:0};
+      for(const v of lista){
+        const tipo=String(v?.tipo||'');
+        if(!['esc','filt'].includes(tipo))continue;
+        const qtd=Number(v?.qtd)||0;
+        const valor=Number(v?.valor)||0;
+        if(qtd<=0)continue;
+        const cli=clientes[nome];
+        if(tipo==='esc'){cli.escamas+=qtd;escDia+=qtd}
+        else {cli.filtrado+=qtd;filtDia+=qtd}
+        cli.total_sacos+=qtd;
+        cli.valor_total+=valor;
+        cli.vendas++;
+        totalDia+=qtd;
+        valorDia+=valor;
+      }
+    }
+    porDia.push({data,escamas:escDia,filtrado:filtDia,total_sacos:totalDia,valor_total:valorDia});
+  }
+
+  const listaClientes=Object.values(clientes)
+    .sort((a,b)=>b.total_sacos-a.total_sacos||String(a.cliente).localeCompare(String(b.cliente)))
+    .map(x=>({...x,valor_total:Number(x.valor_total.toFixed(2))}));
+
+  const totais=listaClientes.reduce((a,x)=>{
+    a.escamas+=x.escamas;a.filtrado+=x.filtrado;a.total_sacos+=x.total_sacos;a.valor_total+=x.valor_total;return a;
+  },{escamas:0,filtrado:0,total_sacos:0,valor_total:0});
+  totais.valor_total=Number(totais.valor_total.toFixed(2));
+
+  return {
+    fonte:'historico estruturado do aplicativo Gelo Tutóia',
+    dias_considerados:dias.length,
+    periodo:dias.length?{mais_recente:String(dias[0]?.data||''),mais_antigo:String(dias[dias.length-1]?.data||'')}:null,
+    totais,
+    por_cliente:listaClientes,
+    por_dia:porDia
+  };
+}
+
+function mergeContextWithSalesHistory(base){
+  const historico=salesHistoryContext();
+  if(base&&typeof base==='object'&&!Array.isArray(base))return {...base,historico_vendas_app:historico};
+  return {contexto_original:base??null,historico_vendas_app:historico};
+}
+
 function buildPrompt(payload={}){
   const message=String(payload.message||payload.pergunta||'').trim();
-  const contexto=payload.contexto||payload.context||null;
+  const contexto=mergeContextWithSalesHistory(payload.contexto||payload.context||null);
   const linhas=[
     'Você é o agente operacional interno do aplicativo Gelo Tutóia.',
     'As mensagens analisadas são registros internos de vendas enviados por Cláudio, Tafarel e Maíra. NÃO trate essas mensagens como atendimento ao cliente e NÃO faça perguntas de endereço, horário, confirmação de pedido ou finalização.',
@@ -108,6 +172,9 @@ function buildPrompt(payload={}){
     'Quando houver dúvida relevante, marque como precisa de confirmação; não interrogue o ajudante.',
     'Uma visita não concluída não é venda; uma venda concluída exige indicação de entrega/saída efetiva.',
     'Quando solicitado relatório, responda como bloco de notas, em ordem cronológica, e some quantidades/valores apenas quando os dados permitirem.',
+    'Para perguntas sobre quantos sacos já foram vendidos, qual cliente comprou, e se foi escamas ou filtrado, use primeiro contexto.historico_vendas_app como fonte principal. Esse histórico vem do registro estruturado do aplicativo, não de interpretação do WhatsApp.',
+    'Ao responder totais por cliente, some escamas e filtrado separadamente e informe o total geral. Não conte observações como venda.',
+    'Se o usuário citar um cliente pelo nome, procure esse nome no campo por_cliente do histórico estruturado e responda com os números registrados.',
     contexto?'DADOS DO SISTEMA:\n'+JSON.stringify(contexto):'',
     'PEDIDO DO USUÁRIO:\n'+message
   ].filter(Boolean);
@@ -289,6 +356,7 @@ window.GeloTutoiaGPT={
   relatorioPorPedido,
   historicoPessoa,
   relatorioPessoa,
+  salesHistoryContext,
   reset(){localStorage.removeItem(SESSION_KEY);},
   logout(){
     localStorage.removeItem(TOKEN_KEY);
