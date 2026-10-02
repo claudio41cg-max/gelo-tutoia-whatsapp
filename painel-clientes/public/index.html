@@ -140,25 +140,43 @@ let deferredPrompt=null;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;el('installBtn').style.display='block'});
 window.addEventListener('appinstalled',()=>{el('installBtn').style.display='none';deferredPrompt=null});
 async function installApp(){if(!deferredPrompt){alert('Use o menu do navegador e escolha “Instalar app” ou “Adicionar à tela inicial”.');return}deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;el('installBtn').style.display='none'}
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}
-async function api(url,opts={}){const r=await fetch(url,{headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Erro na operação');return d}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('[SW] falha ao registrar:',e)))}
+async function api(url,opts={}){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),10000);
+  try{
+    const r=await fetch(url,{headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts,signal:opts.signal||ctrl.signal});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'Erro na operação');
+    return d;
+  }catch(e){
+    if(e?.name==='AbortError')throw new Error('Tempo esgotado. Tente novamente.');
+    throw e;
+  }finally{clearTimeout(timer)}
+}
 async function health(){try{const h=await api('/api/health');const ok=!!h.wuzapiConfigured;el('health').textContent=ok?'Ponte WhatsApp pronta para testes':'Painel online, falta configurar a ponte WhatsApp';el('healthDot').className='dot'+(ok?' ok':'')}catch{el('health').textContent='Servidor sem resposta';el('healthDot').className='dot'}}
-async function load(){const box=el('clients');try{const list=await api('/api/clients');el('totalCount').textContent=list.length;el('onlineCount').textContent=list.filter(x=>x.loggedIn).length;el('aiCount').textContent=list.filter(x=>x.aiEnabled).length;if(!list.length){box.innerHTML='<div class="empty"><div class="emptyIcon">💬</div><strong>Nenhum cliente cadastrado</strong><div style="margin-top:7px">Toque no botão + para adicionar o primeiro WhatsApp.</div></div>';return}box.innerHTML=list.map(c=>`
-<div class="card">
+let loadingClients=false;
+async function load(){
+  if(loadingClients||document.hidden)return;
+  loadingClients=true;
+  const box=el('clients');
+  try{
+    const list=await api('/api/clients');el('totalCount').textContent=list.length;el('onlineCount').textContent=list.filter(x=>x.loggedIn).length;el('aiCount').textContent=list.filter(x=>x.aiEnabled).length;if(!list.length){box.innerHTML='<div class="empty"><div class="emptyIcon">💬</div><strong>Nenhum cliente cadastrado</strong><div style="margin-top:7px">Toque no botão + para adicionar o primeiro WhatsApp.</div></div>';return}box.innerHTML=list.map(c=>`
+<div class="card" data-id="${esc(c.id)}">
   <div class="row">
     <div><div class="name">${esc(c.businessName||c.name)}</div><div class="person">${esc(c.name)} · ${esc(c.phone)} · ${esc(c.businessType||'geral')}</div></div>
     <span class="badge ${c.loggedIn?'ok':''}">${c.loggedIn?'Conectado':'Desconectado'}</span>
   </div>
   <div class="controls">
-    <div class="control"><div class="controlText"><strong>Agente de IA</strong><small>Respostas automáticas deste cliente</small></div><label class="toggle"><input type="checkbox" ${c.aiEnabled?'checked':''} onchange="controls('${c.id}','aiEnabled',this.checked)"><span class="slider"></span></label></div>
-    <div class="control"><div class="controlText"><strong>Atendimento manual</strong><small>Pausa a automação para uma pessoa assumir</small></div><label class="toggle"><input type="checkbox" ${c.manualMode?'checked':''} onchange="controls('${c.id}','manualMode',this.checked)"><span class="slider"></span></label></div>
+    <div class="control"><div class="controlText"><strong>Agente de IA</strong><small>Respostas automáticas deste cliente</small></div><label class="toggle"><input type="checkbox" ${c.aiEnabled?'checked':''} data-action="toggle-ai"><span class="slider"></span></label></div>
+    <div class="control"><div class="controlText"><strong>Atendimento manual</strong><small>Pausa a automação para uma pessoa assumir</small></div><label class="toggle"><input type="checkbox" ${c.manualMode?'checked':''} data-action="toggle-manual"><span class="slider"></span></label></div>
   </div>
   <div class="actions">
     ${c.externalManaged
       ? '<button class="btn secondary" disabled>Conexão existente protegida</button>'
-      : '<button class="btn primary" onclick="connectClient(\''+c.id+'\')">'+(c.loggedIn?'Ver conexão':'Conectar WhatsApp')+'</button><button class="btn secondary" onclick="refreshStatus(\''+c.id+'\')">Status</button>'+(c.connected?'<button class="btn danger" onclick="disconnectClient(\''+c.id+'\')">Desconectar</button>':'')}
+      : '<button class="btn primary" data-action="connect">'+(c.loggedIn?'Ver conexão':'Conectar WhatsApp')+'</button><button class="btn secondary" data-action="status">Status</button>'+(c.connected?'<button class="btn danger" data-action="disconnect">Desconectar</button>':'')}
   </div>
-</div>`).join('')}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
+</div>`).join('')}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}finally{loadingClients=false}}
 const SALON_PROMPT=`Você é a atendente virtual de vendas e agendamentos do salão [NOME DO SALÃO].
 
 OBJETIVO:
@@ -203,7 +221,7 @@ REGRA PRINCIPAL:
 O objetivo é transformar interesse em agendamento de forma natural e sem pressão. Nunca invente informações.`;
 
 function fillSalonPrompt(){
-  const name=(el('businessName').value||'[NOME DO SALÃO]').trim();
+  const name=(el('businessName').value||'').trim()||'[NOME DO SALÃO]';
   el('businessType').value='salao';
   el('aiPrompt').value=SALON_PROMPT.replaceAll('[NOME DO SALÃO]',name||'[NOME DO SALÃO]');
 }
@@ -218,11 +236,50 @@ function closeNew(){el('newModal').classList.remove('open')}
 async function createClient(){el('newMsg').textContent='Criando cliente…';try{await api('/api/clients',{method:'POST',body:JSON.stringify({name:el('name').value,businessName:el('businessName').value,phone:el('phone').value,businessType:el('businessType').value,aiPrompt:el('aiPrompt').value})});closeNew();el('name').value='';el('businessName').value='';el('phone').value='';el('businessType').value='geral';el('aiPrompt').value='';await load()}catch(e){el('newMsg').textContent=e.message}}
 async function controls(id,key,value){try{await api('/api/clients/'+id+'/controls',{method:'PATCH',body:JSON.stringify({[key]:value})});await load()}catch(e){alert(e.message)}}
 async function connectClient(id){try{await api('/api/clients/'+id+'/connect',{method:'POST',body:'{}'});el('qrModal').classList.add('open');el('qrArea').textContent='Gerando QR Code…';setTimeout(()=>showQr(id),900)}catch(e){alert(e.message)}}
-async function showQr(id){try{const q=await api('/api/clients/'+id+'/qr');el('qrArea').innerHTML=q.qr?'<img src="'+q.qr+'" alt="QR Code"><p class="notice">Leia este código com o celular do cliente.</p>':'<p class="notice">QR ainda não disponível. Aguarde alguns segundos e tente novamente.</p>'}catch(e){el('qrArea').textContent=e.message}}
-function closeQr(){el('qrModal').classList.remove('open');load()}
+let qrTimer=null,qrClientId='';
+async function showQr(id){
+  qrClientId=id;
+  try{
+    const q=await api('/api/clients/'+id+'/qr');
+    const area=el('qrArea');
+    if(q.qr){
+      const img=new Image();
+      img.src=q.qr;img.alt='QR Code';
+      const note=document.createElement('p');note.className='notice';note.textContent='Leia este código com o celular do cliente.';
+      area.replaceChildren(img,note);
+    }else{
+      const note=document.createElement('p');note.className='notice';note.textContent='QR ainda não disponível. Aguarde alguns segundos.';
+      area.replaceChildren(note);
+    }
+    clearTimeout(qrTimer);
+    if(el('qrModal').classList.contains('open'))qrTimer=setTimeout(()=>showQr(id),20000);
+  }catch(e){el('qrArea').textContent=e.message}
+}
+function closeQr(){clearTimeout(qrTimer);qrTimer=null;qrClientId='';el('qrModal').classList.remove('open');load()}
 async function refreshStatus(id){try{const s=await api('/api/clients/'+id+'/status');alert(s.loggedIn?'WhatsApp conectado com sucesso.':'Ainda aguardando a leitura do QR Code.');await load()}catch(e){alert(e.message)}}
 async function disconnectClient(id){if(!confirm('Desconectar esta sessão do WhatsApp?'))return;try{await api('/api/clients/'+id+'/disconnect',{method:'POST',body:'{}'});await load()}catch(e){alert(e.message)}}
-health();load();setInterval(load,15000);
+el('clients').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-action]');
+  if(!btn)return;
+  const card=btn.closest('.card');
+  const id=card?.dataset?.id;
+  if(!id)return;
+  const act=btn.dataset.action;
+  if(act==='connect')connectClient(id);
+  else if(act==='status')refreshStatus(id);
+  else if(act==='disconnect')disconnectClient(id);
+});
+el('clients').addEventListener('change',e=>{
+  const input=e.target.closest('input[data-action]');
+  if(!input)return;
+  const card=input.closest('.card');
+  const id=card?.dataset?.id;
+  if(!id)return;
+  if(input.dataset.action==='toggle-ai')controls(id,'aiEnabled',input.checked);
+  else if(input.dataset.action==='toggle-manual')controls(id,'manualMode',input.checked);
+});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+health();load();setInterval(()=>{if(!document.hidden)load()},30000);
 </script>
 </body>
 </html>
