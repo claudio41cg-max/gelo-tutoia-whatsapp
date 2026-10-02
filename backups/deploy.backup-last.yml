@@ -1,4 +1,5 @@
 name: Deploy Cloudflare Worker
+# redeploy-trigger: 2026-10-01-reset-fix
 on:
   push:
     branches: [main]
@@ -31,6 +32,7 @@ jobs:
           enhance=open('pwa-src/client-sync.js',encoding='utf-8').read()
           assistant=open('pwa-src/assistente.js',encoding='utf-8').read()
           gptbridge=open('pwa-src/gpt-bridge-v1.js',encoding='utf-8').read()
+          gptlive=open('pwa-src/gpt-live-v1.js',encoding='utf-8').read()
           historicoia=open('pwa-src/historico-ia.js',encoding='utf-8').read()
           automatico=open('pwa-src/auto-whatsapp.js',encoding='utf-8').read()
           ui2=open('pwa-src/ui-v2.js',encoding='utf-8').read()
@@ -39,12 +41,16 @@ jobs:
           premium=open('pwa-src/premium-ui.css',encoding='utf-8').read()
           quality='''<style id="hq-ui">html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}button,.cli-btn,.quick-btn,.nav-btn{image-rendering:auto}svg{shape-rendering:geometricPrecision;text-rendering:geometricPrecision}@media(min-resolution:2dppx){.cli-btn,.quick-btn,.nav-btn{border-width:1px}}</style>'''
           html=html.replace('</head>','<style id="premium-ui">'+premium+'</style></head>')
-          html=html.replace('</body>',quality+'<script>'+enhance+'</script><script>'+assistant+'</script><script>'+gptbridge+'</script><script>'+automatico+'</script><script>'+ui2+'</script><script>'+ui3+'</script><script>'+caderno+'</script><script>'+historicoia+'</script></body>')
+          html=html.replace('</body>',quality+'<script>'+enhance+'</script><script>'+assistant+'</script><script>'+gptbridge+'</script><script>'+gptlive+'</script><script>'+automatico+'</script><script>'+ui2+'</script><script>'+ui3+'</script><script>'+caderno+'</script><script>'+historicoia+'</script></body>')
           html=html.replace('vendasRecebidas.vilter(', 'vendasRecebidas.filter(')
           html=html.replace("origem:'WhatsApp Automático',", "origem:'WhatsApp Automático',auto_elegivel:x.auto_elegivel===true,")
           html=html.replace("const pag=['Dinheiro','PIX','Fiado'].includes(x.pagamento)?x.pagamento:null;", "const pag=['Dinheiro','PIX','Fiado'].includes(x.pagamento)?x.pagamento:'Não informado';")
           html=html.replace('||qtd<=0||!pag)', '||qtd<=0)')
           html=html.replace('setInterval(()=>sincronizarInboxRemoto(false),60000);', 'setInterval(()=>{if(!document.hidden)sincronizarInboxRemoto(false)},30000);')
+          old_reset="""addBtn(div,'REINICIAR TUDO','act-btn btn-reset',()=>{\n    confirmar('Reiniciar o dia?','Todos os dados serão apagados. Tem certeza?','Sim, reiniciar',()=>{\n      S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};\n      salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');\n    });\n  });"""
+          new_reset="""addBtn(div,'REINICIAR TUDO','act-btn btn-reset',()=>{\n    confirmar('Reiniciar o dia?','Todos os dados do movimento do dia serão zerados. O histórico do WhatsApp continuará guardado, mas não será relançado.','Sim, reiniciar',async()=>{\n      try{\n        const rr=await fetch('https://painel-clientes-production.up.railway.app/api/gelo/reset-day?ts='+Date.now(),{method:'POST',cache:'no-store'});\n        const dd=await rr.json().catch(()=>({}));\n        if(rr.ok&&Number(dd?.cutoff)>0)localStorage.setItem('gelo_tutoia_reset_cutoff_v1',String(Number(dd.cutoff)));\n      }catch(e){console.warn('Falha ao gravar reset no servidor',e)}\n      try{if(typeof vendasRecebidas!=='undefined'){vendasRecebidas.splice(0,vendasRecebidas.length);if(typeof salvarInbox==='function')salvarInbox();}}catch(e){}\n      S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};\n      salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');\n    });\n  });"""
+          if old_reset not in html: raise RuntimeError('Bloco base REINICIAR TUDO não encontrado')
+          html=html.replace(old_reset,new_reset)
           if not html.lstrip().startswith('<!DOCTYPE html>') or not html.rstrip().endswith('</html>'): raise RuntimeError('PWA HTML incompleto')
           open('public/app/index.html','w',encoding='utf-8').write(html)
           print('PWA premium pronta, bytes:',len(html.encode()))
@@ -56,6 +62,7 @@ jobs:
           node --check pwa-src/client-sync.js
           node --check pwa-src/assistente.js
           node --check pwa-src/gpt-bridge-v1.js
+          node --check pwa-src/gpt-live-v1.js
           node --check pwa-src/historico-ia.js
           node --check pwa-src/auto-whatsapp.js
           node --check pwa-src/ui-v2.js
