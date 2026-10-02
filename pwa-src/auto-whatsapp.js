@@ -399,5 +399,5 @@
   setInterval(()=>{
     if(document.hidden||syncRapidoEmAndamento)return;
     sincronizarInboxRemoto(false).catch(()=>{});
-  },5000);
+  },10000);
 })();
