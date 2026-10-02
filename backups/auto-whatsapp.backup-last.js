@@ -1,6 +1,73 @@
 /* Integra mensagens verificadas do WhatsApp ao movimento do dia. */
 (()=>{
   const syncAnterior=sincronizarInboxRemoto;
+  const PANEL_INBOX_API='https://painel-clientes-production.up.railway.app/api/gelo/inbox';
+  const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
+  const PANEL_RESET_DAY='https://painel-clientes-production.up.railway.app/api/gelo/reset-day';
+  const PANEL_IGNORE_SALE='https://painel-clientes-production.up.railway.app/api/gelo/ignore-sale';
+  let gtSyncGeneration=0;
+  let gtResetEmAndamento=false;
+  const GT_RESET_CUTOFF_KEY='gelo_tutoia_reset_cutoff_v1';
+  const GT_IGNORED_REMOTE_IDS_KEY='gelo_tutoia_ignored_remote_ids_v1';
+  function idsIgnorados(){
+    try{return new Set(JSON.parse(localStorage.getItem(GT_IGNORED_REMOTE_IDS_KEY)||'[]').map(String))}catch{return new Set()}
+  }
+  function salvarIdsIgnorados(set){
+    try{localStorage.setItem(GT_IGNORED_REMOTE_IDS_KEY,JSON.stringify([...set].slice(-4000)))}catch(e){}
+  }
+  function ignorarIdsAtuais(){
+    const set=idsIgnorados();
+    for(const v of vendasRecebidas||[])if(v?.remoteId)set.add(String(v.remoteId));
+    for(const lista of Object.values(S?.vpc||{}))for(const v of Array.isArray(lista)?lista:[])if(v?.remoteId)set.add(String(v.remoteId));
+    salvarIdsIgnorados(set);
+  }
+  function removerIdsIgnorados(){
+    const set=idsIgnorados();if(!set.size)return;
+    let mudou=false;
+    for(let i=vendasRecebidas.length-1;i>=0;i--){
+      if(set.has(String(vendasRecebidas[i]?.remoteId||''))){vendasRecebidas.splice(i,1);mudou=true}
+    }
+    if(mudou)salvarInbox();
+  }
+  function resetCutoff(){const n=Number(localStorage.getItem(GT_RESET_CUTOFF_KEY)||0);return Number.isFinite(n)?n:0}
+  function antesDoCorte(iso){const t=new Date(iso||0).getTime();return !!t&&t<=resetCutoff()}
+  function limparAntesDoCorte(){
+    const corte=resetCutoff();if(!corte)return;
+    let mudou=false;
+    for(let i=vendasRecebidas.length-1;i>=0;i--){
+      const t=new Date(vendasRecebidas[i]?.criadoEm||0).getTime();
+      if(t&&t<=corte){vendasRecebidas.splice(i,1);mudou=true}
+    }
+    if(mudou)salvarInbox();
+  }
+  function configurarResetCompleto(){
+    const botoes=[...document.querySelectorAll('.btn-reset')];
+    const btn=botoes.find(b=>/REINICIAR TUDO/i.test(String(b.textContent||'')));
+    if(!btn||btn.dataset.gtResetCompleto==='1')return;
+    btn.dataset.gtResetCompleto='1';
+    btn.onclick=()=>{
+      confirmar('Reiniciar o dia?','Todos os dados do movimento do dia serão zerados. O histórico do WhatsApp continuará guardado, mas não será relançado.','Sim, reiniciar',async()=>{
+        gtResetEmAndamento=true;
+        gtSyncGeneration++;
+        try{
+          ignorarIdsAtuais();
+          let corteAgora=Date.now();
+          try{
+            const rr=await fetch(PANEL_RESET_DAY+'?ts='+Date.now(),{method:'POST',cache:'no-store'});
+            const dd=await rr.json().catch(()=>({}));
+            if(rr.ok&&Number(dd?.cutoff)>0)corteAgora=Number(dd.cutoff);
+          }catch(e){console.warn('Falha ao gravar reset no servidor',e)}
+          localStorage.setItem(GT_RESET_CUTOFF_KEY,String(corteAgora));
+          vendasRecebidas.splice(0,vendasRecebidas.length);
+          salvarInbox();
+          S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
+          salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');
+        }finally{
+          setTimeout(()=>{gtResetEmAndamento=false},1200);
+        }
+      });
+    };
+  }
   const lancarAnterior=lancarRecebidaNoDia;
   const confirmarAnterior=confirmarVendaRecebida;
   let statusAtivo=null,pendencias=[];
@@ -16,7 +83,7 @@
     mostrarStatus();
   }
   const telaClientesAnterior=telaClientes;
-  telaClientes=function(...args){const r=telaClientesAnterior.apply(this,args);setTimeout(mostrarStatus,0);return r};
+  telaClientes=function(...args){const r=telaClientesAnterior.apply(this,args);setTimeout(()=>{mostrarStatus();configurarResetCompleto()},0);return r};
   mostrarStatus();checarStatus();
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sincronizarInboxRemoto(false)});
   confirmarVendaRecebida=function(id){
@@ -81,6 +148,7 @@
       // Só vendas novas e ainda pendentes podem entrar automaticamente no movimento do dia.
       // Itens que já estão em Confirmadas servem apenas como histórico e nunca são relançados.
       if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
+      if(idsIgnorados().has(String(v.remoteId)))continue;
       if(!vendaLocalValida(v))continue;
 
       if(!jaLancada(v.remoteId)){
@@ -102,24 +170,8 @@
     }
     return total;
   }
-  let syncManualEmAndamento=false;
-  atualizarVendasWhatsApp=async function(filtro='Pendente'){
-    if(syncManualEmAndamento)return;
-    syncManualEmAndamento=true;
-    const btn=document.getElementById('btn-sync-wa');
-    if(btn){btn.disabled=true;btn.textContent='⏳ Buscando...'}
-    let timeoutId;
-    try{
-      const limite=new Promise(resolve=>{timeoutId=setTimeout(()=>resolve({ok:false,timeout:true}),30000)});
-      const resultado=await Promise.race([sincronizarInboxRemoto(true),limite]);
-      if(resultado?.timeout)toast('⚠ A busca demorou demais. Tente novamente.');
-    }catch(e){
-      toast('⚠ Não consegui atualizar o WhatsApp agora');
-    }finally{
-      if(timeoutId)clearTimeout(timeoutId);
-      syncManualEmAndamento=false;
-      try{telaVendasRecebidas(filtro)}catch(e){}
-    }
+  atualizarVendasWhatsApp=async function(){
+    return sincronizarInboxRemoto(false);
   };
 
 
@@ -141,7 +193,26 @@
     const i=vendasRecebidas.findIndex(x=>String(x.id)===String(id));
     if(i<0)return;
     const v=vendasRecebidas[i];
-    confirmar('Excluir este registro?','A venda será removida do histórico de Recebidas e, se estiver no movimento do dia, também sairá dos totais.','Sim, excluir',()=>{
+    confirmar('Excluir este registro?','A venda será removida do movimento e não voltará a ser lançada automaticamente. O histórico bruto do WhatsApp continua guardado para o GPT.','Sim, excluir',async()=>{
+      const set=idsIgnorados();
+      if(v.remoteId)set.add(String(v.remoteId));
+      salvarIdsIgnorados(set);
+
+      let messageId=String(v?.sourceMessageId||'').trim();
+      if(!messageId && /^railway-/.test(String(v?.remoteId||''))){
+        messageId=String(v.remoteId).replace(/^railway-/,'').replace(/-\d+$/,'');
+      }
+      if(messageId){
+        try{
+          await fetch(PANEL_IGNORE_SALE,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({message_id:messageId}),
+            cache:'no-store'
+          });
+        }catch(e){console.warn('Falha ao persistir exclusão da venda no Railway',e)}
+      }
+
       if(v.remoteId&&S.vpc?.[v.cliente]){
         S.vpc[v.cliente]=S.vpc[v.cliente].filter(x=>x.remoteId!==v.remoteId);
       }
@@ -153,12 +224,13 @@
   };
   telaVendasRecebidas=function(filtro='Confirmada'){
     if(filtro==='Pendente')filtro='Confirmada';
+    sincronizarInboxRemoto(false).catch(()=>{});
     const lista=vendasRecebidas.filter(v=>v.status===filtro);
     const conf=vendasRecebidas.filter(v=>v.status==='Confirmada').length;
     const ign=vendasRecebidas.filter(v=>v.status==='Ignorada').length;
     let h=`<div class="pg-hdr"><div class="pg-title">💬 VENDAS RECEBIDAS</div>
       <div class="pg-sub">Histórico das vendas do WhatsApp</div></div>
-      <button id="btn-sync-wa" class="act-btn" style="margin:0 14px 10px;width:calc(100% - 28px);border-color:rgba(22,137,255,.45);color:#9ed1ff" onclick="atualizarVendasWhatsApp('${filtro}')">🔄 ATUALIZAR WHATSAPP</button>
+      <div style="margin:0 14px 10px;padding:10px 12px;border-radius:12px;background:#12354f;color:#dff4ff;font-size:12px;text-align:center">✓ Sincronização automática ativa</div>
       <div class="tabs3" style="grid-template-columns:1fr 1fr">
         <button class="tab3 ${filtro==='Confirmada'?'active':''}" onclick="telaVendasRecebidas('Confirmada')">Confirmadas ${conf}</button>
         <button class="tab3 ${filtro==='Ignorada'?'active':''}" onclick="telaVendasRecebidas('Ignorada')">Ignoradas ${ign}</button>
@@ -178,15 +250,152 @@
     abrirSub(h);atualizarBadgeInbox();
   };
 
-  setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},350);
-  sincronizarInboxRemoto=async function(mostrarAviso=true){
-    const resultado=await syncAnterior(mostrarAviso);
-    if(resultado?.ok){
-      integrar();
-      for(const v of vendasRecebidas.filter(x=>x.status==='Confirmada'&&x.syncRemoto==='pendente')){
-        await marcarStatusRemoto(v,'confirmada_app');
-      }
+  let syncRapidoEmAndamento=false;
+  setTimeout(()=>{try{limparFalsosPositivosLocais();sincronizarInboxRemoto(false)}catch(e){}},150);
+  setTimeout(()=>{try{sincronizarInboxRemoto(false)}catch(e){}},1800);
+  function clienteDinamicoNoTexto(texto){
+    const n=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+    const t=' '+n(texto)+' ';
+    const nomes=(CLIENTES||[]).slice().sort((a,b)=>n(b).length-n(a).length);
+    for(const nome of nomes){
+      const nn=n(nome); if(nn && t.includes(' '+nn+' '))return nome;
     }
-    return resultado;
+    return '';
+  }
+  async function sincronizarViaHistoricoLocal(mostrarAviso){
+    try{
+      const corte=resetCutoff();
+      const r=await fetch(PANEL_LOCAL_FEED+'?after='+encodeURIComponent(corte)+'&ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      if(Number(d?.server_cutoff)>resetCutoff())localStorage.setItem(GT_RESET_CUTOFF_KEY,String(Number(d.server_cutoff)));
+      const mensagens=Array.isArray(d?.mensagens)?d.mensagens:[];
+      let novas=0,ignoradas=0;
+      for(const m of mensagens){
+        const msgMs=Number(m?.timestamp_ms||0)||new Date(m?.timestamp||0).getTime();
+        if(resetCutoff() && (!msgMs || msgMs<=resetCutoff()))continue;
+        const texto=String(m?.texto||'').trim();
+        if(!texto)continue;
+        let vendas=typeof interpretarLinhaVenda==='function'?interpretarLinhaVenda(texto):[];
+        if((!Array.isArray(vendas)||!vendas.some(v=>v?.ok))&&clienteDinamicoNoTexto(texto)){
+          const cli=clienteDinamicoNoTexto(texto);
+          const nt=String(texto).toLowerCase();
+          const qm=nt.match(/\b(\d{1,3})\s*(?:saco|sacos)?\b/);
+          const qtd=qm?Number(qm[1]):0;
+          const tipo=/filtrad/.test(nt)?'filt':/escam/.test(nt)?'esc':'';
+          const pag=/\bpix\b/.test(nt)?'PIX':/\b(fiando|fiado)\b/.test(nt)?'Fiado':/\b(pago|pagou|dinheiro)\b/.test(nt)?'Dinheiro':'Não informado';
+          if(cli&&qtd>0&&tipo){
+            const preco=precoVendaRemota(cli,tipo);
+            vendas=[{ok:true,cliente:cli,qtd,tipo,pag,preco,valor:qtd*preco}];
+          }
+        }
+        let idx=0;
+        for(const v of vendas){
+          if(!v?.ok){ignoradas++;continue}
+          const remoteId='railway-'+String(m?.message_id||m?.timestamp||Date.now())+'-'+(idx++);
+          if(idsIgnorados().has(remoteId))continue;
+          if(vendasRecebidas.some(x=>String(x?.remoteId||'')===remoteId))continue;
+          const criadoEm=String(m?.timestamp||new Date().toISOString());
+          vendasRecebidas.push({
+            id:'remoto-'+remoteId,
+            remoteId,
+            remoteKey:'',
+            sourceMessageId:String(m?.message_id||''),
+            criadoEm,
+            hora:horaDaDataIso(criadoEm),
+            origem:'WhatsApp automático',
+            transcricao:texto,
+            cliente:v.cliente,
+            qtd:Number(v.qtd)||0,
+            tipo:v.tipo,
+            pag:v.pag,
+            preco:Number(v.preco)||precoVendaRemota(v.cliente,v.tipo),
+            valor:Number(v.valor)||((Number(v.qtd)||0)*precoVendaRemota(v.cliente,v.tipo)),
+            status:'Pendente',
+            confianca:'alta',
+            syncRemoto:'local'
+          });
+          novas++;
+        }
+      }
+      if(novas)salvarInbox();
+      atualizarBadgeInbox();
+      return {ok:true,novas,ignoradas,via:'railway-local'};
+    }catch(e){
+      console.warn('Falha no histórico local do Railway',e);
+      if(mostrarAviso)toast('⚠ Não consegui buscar vendas agora');
+      return {ok:false,erro:String(e),via:'railway-local'};
+    }
+  }
+
+  async function sincronizarViaPainel(mostrarAviso){
+    try{
+      const r=await fetch(PANEL_INBOX_API+'?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      const lista=Array.isArray(d?.vendas)?d.vendas:[];
+      let novas=0,ignoradas=0;
+      for(const x of lista){
+        const remoteId=String(x?.remote_id||'');
+        if(!remoteId||vendasRecebidas.some(v=>String(v?.remoteId||'')===remoteId))continue;
+        const cliente=String(x?.cliente||'');
+        const tipo=x?.tipo==='filt'?'filt':'esc';
+        const qtd=Number(x?.qtd)||0;
+        const pag=['Dinheiro','PIX','Fiado'].includes(x?.pagamento)?x.pagamento:'Não informado';
+        if(!CLIENTES.includes(cliente)||!Number.isInteger(qtd)||qtd<1||qtd>200){
+          ignoradas++;
+          continue;
+        }
+        const preco=precoVendaRemota(cliente,tipo);
+        vendasRecebidas.push({
+          id:'remoto-'+remoteId,
+          remoteId,
+          remoteKey:String(x?.remote_key||''),
+          criadoEm:x?.recebido_em||new Date().toISOString(),
+          hora:horaDaDataIso(x?.recebido_em),
+          origem:'WhatsApp automático',
+          transcricao:String(x?.transcricao||''),
+          cliente,qtd,tipo,pag,preco,valor:preco*qtd,
+          status:'Pendente',
+          confianca:x?.confianca||'revisar',
+          syncRemoto:'ok'
+        });
+        novas++;
+      }
+      if(novas)salvarInbox();
+      atualizarBadgeInbox();
+      if(mostrarAviso&&!novas&&!ignoradas)toast('✓ WhatsApp atualizado');
+      return {ok:true,novas,ignoradas,via:'painel'};
+    }catch(e){
+      console.warn('Falha também no caminho reserva do painel',e);
+      if(mostrarAviso)toast('⚠ Não consegui buscar vendas agora');
+      return {ok:false,erro:String(e),via:'painel'};
+    }
+  }
+
+  sincronizarInboxRemoto=async function(mostrarAviso=true){
+    if(syncRapidoEmAndamento||gtResetEmAndamento)return {ok:false,ocupado:true};
+    syncRapidoEmAndamento=true;
+    const minhaGeracao=gtSyncGeneration;
+    try{
+      const resultado=await sincronizarViaHistoricoLocal(mostrarAviso);
+      if(resultado?.ok){
+        if(minhaGeracao!==gtSyncGeneration||gtResetEmAndamento)return {ok:false,reset:true};
+        limparAntesDoCorte();
+        removerIdsIgnorados();
+        const total=integrar();
+        if(mostrarAviso&&!total&&resultado?.novas)toast('📥 '+resultado.novas+' venda(s) recebida(s)');
+        else if(mostrarAviso&&!total&&!resultado?.novas&&resultado?.via!=='painel')toast('✓ WhatsApp atualizado');
+      }else if(mostrarAviso&&resultado?.via!=='painel'){
+        toast('⚠ Não consegui buscar vendas agora');
+      }
+      return resultado;
+    }finally{
+      syncRapidoEmAndamento=false;
+    }
   };
+  setInterval(()=>{
+    if(document.hidden||syncRapidoEmAndamento)return;
+    sincronizarInboxRemoto(false).catch(()=>{});
+  },5000);
 })();
