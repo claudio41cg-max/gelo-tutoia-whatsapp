@@ -4,7 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const app = express();
-app.use(express.json({ limit: "24mb" }));
+app.use(express.json({ limit: "64mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
@@ -12,6 +12,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const EXTERNAL_STATE_FILE = path.join(DATA_DIR, "external-controls.json");
 const WUZAPI_HISTORY_FILE = path.join(DATA_DIR, "wuzapi-history.json");
+const SALES_SYNC_STATE_FILE = path.join(DATA_DIR, "sales-sync-state.json");
 const WUZAPI_URL = (process.env.WUZAPI_URL || "https://wuzapi-test-production.up.railway.app").replace(/\/$/, "");
 const ADMIN_TOKEN = process.env.WUZAPI_ADMIN_TOKEN || "";
 const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
@@ -33,11 +34,130 @@ const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || 
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
 
+app.post("/api/gelo/reset-day", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const cutoff=Date.now();
+    const atual=readSalesSyncState();
+    writeSalesSyncState({date,cutoff,ignored_ids:atual.ignored_ids||[]});
+    console.log("RESET_DAY_SYNC_CUTOFF", JSON.stringify({date,cutoff}));
+    return res.json({ok:true,date,cutoff});
+  } catch(e) {
+    console.error("Falha ao gravar corte do dia:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao reiniciar sincronização"});
+  }
+});
+
+app.post("/api/gelo/ignore-sale", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const messageId=String(req.body?.message_id||"").trim();
+    if(!messageId) return res.status(400).json({ok:false,error:"message_id obrigatório"});
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const atual=readSalesSyncState();
+    const ids=new Set(Array.isArray(atual.ignored_ids)?atual.ignored_ids.map(String):[]);
+    ids.add(messageId);
+    writeSalesSyncState({date:atual.date||date,cutoff:Number(atual.cutoff||0),ignored_ids:[...ids]});
+    console.log("IGNORE_SALE_MESSAGE_ID", messageId);
+    return res.json({ok:true,message_id:messageId});
+  } catch(e) {
+    console.error("Falha ao ignorar venda:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao ignorar venda"});
+  }
+});
+
+app.get("/api/gelo/inbox-local", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const hoje = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const syncState=readSalesSyncState();
+    const serverCutoff=syncState.date===hoje ? Number(syncState.cutoff||0) : 0;
+    const clientAfter=Math.max(0, Number(req.query?.after || 0) || 0);
+    const afterMs=Math.max(serverCutoff,clientAfter);
+    const toMs = v => {
+      if (v == null || v === "") return 0;
+      if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+      const s=String(v).trim();
+      if (/^\d{10}$/.test(s)) return Number(s)*1000;
+      if (/^\d{13}$/.test(s)) return Number(s);
+      const t=Date.parse(s);
+      return Number.isFinite(t)?t:0;
+    };
+    const ignoredIds=new Set(Array.isArray(syncState.ignored_ids)?syncState.ignored_ids.map(String):[]);
+    const vistos = new Set();
+    const mensagens = [];
+    for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
+      const ts = String(m?.timestamp || "");
+      const tsMs = toMs(ts);
+      if (localDate(ts) !== hoje) continue;
+      if (afterMs && (!tsMs || tsMs <= afterMs)) continue;
+      const id = String(m?.message_id || "").trim();
+      if(id && ignoredIds.has(id)) continue;
+      const texto = String(m?.transcricao || m?.texto || "").trim();
+      if (!texto) continue;
+      const dedupe = id || [ts, texto, m?.sender_jid || "", m?.sender_alt || ""].join("|");
+      if (vistos.has(dedupe)) continue;
+      vistos.add(dedupe);
+      mensagens.push({
+        message_id:id,
+        timestamp:ts,
+        timestamp_ms:tsMs,
+        texto,
+        sender_jid:String(m?.sender_jid || ""),
+        sender_alt:String(m?.sender_alt || ""),
+        tipo:String(m?.tipo || "")
+      });
+    }
+    mensagens.sort((a,b)=>(a.timestamp_ms||0)-(b.timestamp_ms||0));
+    return res.json({ ok:true, after:afterMs, server_cutoff:serverCutoff, mensagens:mensagens.slice(-500) });
+  } catch (e) {
+    console.error("Falha no inbox local do Gelo Tutóia:", e?.message || e);
+    return res.status(500).json({ ok:false, error:e?.message || "Falha ao ler histórico local" });
+  }
+});
+
+app.get("/api/gelo/inbox", async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try {
+    const rr = await fetch(GELO_INBOX_URL + (GELO_INBOX_URL.includes("?") ? "&" : "?") + "ts=" + Date.now(), {
+      headers: { Accept: "application/json" }
+    });
+    const textBody = await rr.text();
+    let data = {};
+    try { data = JSON.parse(textBody || "{}"); } catch {}
+    if (!rr.ok) {
+      console.error("Worker inbox falhou:", rr.status, String(textBody || "").slice(0, 1200));
+      return res.status(502).json({ ok:false, error:"Worker inbox HTTP " + rr.status, detail:String(textBody || "").slice(0, 600) });
+    }
+    return res.json({ ok:true, vendas:Array.isArray(data?.vendas) ? data.vendas : [] });
+  } catch (e) {
+    console.error("Falha no proxy do inbox Gelo Tutóia:", e?.message || e);
+    return res.status(502).json({ ok:false, error:e?.message || "Falha ao buscar inbox" });
+  }
+});
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: false, manualMode: true }, null, 2));
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
+if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 
+function readSalesSyncState() {
+  try {
+    const s=JSON.parse(fs.readFileSync(SALES_SYNC_STATE_FILE,"utf8")||"{}");
+    return {date:String(s?.date||""),cutoff:Number(s?.cutoff||0)||0,ignored_ids:Array.isArray(s?.ignored_ids)?s.ignored_ids.map(String):[]};
+  } catch { return {date:"",cutoff:0,ignored_ids:[]}; }
+}
+function writeSalesSyncState(state) {
+  const clean={date:String(state?.date||""),cutoff:Number(state?.cutoff||0)||0,ignored_ids:Array.isArray(state?.ignored_ids)?[...new Set(state.ignored_ids.map(String))].slice(-5000):[]};
+  fs.writeFileSync(SALES_SYNC_STATE_FILE,JSON.stringify(clean,null,2));
+  return clean;
+}
 function readClients() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8") || "[]"); }
   catch { return []; }
@@ -198,8 +318,16 @@ async function processAuthorizedHistoricalAudio({token,messageId,timestamp,perso
     body:JSON.stringify(relay)
   });
   const result=await rr.json().catch(()=>({}));
-  if(!rr.ok || !result?.ok) return null;
+  const workerErro=String(result?.erro||result?.error||"").trim();
+  if(!rr.ok || !result?.ok){
+    console.error("Falha no Worker ao transcrever áudio histórico:",id,"HTTP",rr.status,workerErro||"sem detalhe");
+    return null;
+  }
   const transcricao=String(result?.transcricao||"").trim();
+  if(!transcricao){
+    console.error("Worker retornou áudio histórico sem transcrição:",id,workerErro||"sem detalhe");
+    return null;
+  }
   mergeWuzapiHistory(id,{
     timestamp:String(timestamp||""),
     pessoa:String(person||"Remetente"),
@@ -250,12 +378,17 @@ async function backfillAuthorizedAudioForDate(targetDate, suppliedToken="") {
     }
   }
   let processed=0;
-  for(let i=0;i<jobs.length;i+=3){
-    const batch=jobs.slice(i,i+3);
-    const done=await Promise.all(batch.map(j=>processAuthorizedHistoricalAudio(j).catch(()=>null)));
-    processed+=done.filter(Boolean).length;
+  let failed=0;
+  for(const job of jobs){
+    const done=await processAuthorizedHistoricalAudio(job).catch(e=>{
+      console.error("Falha ao processar áudio histórico autorizado:",job?.messageId||"",e?.message||e);
+      return null;
+    });
+    if(done) processed++;
+    else failed++;
+    await new Promise(r=>setTimeout(r,250));
   }
-  return {processed,total:jobs.length};
+  return {processed,failed,total:jobs.length};
 }
 
 function migrateLegacyClaroNumber() {
@@ -579,6 +712,13 @@ function localDate(iso) {
   const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return `${v.year}-${v.month}-${v.day}`;
 }
+function localTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone:"America/Sao_Paulo", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false }).formatToParts(d);
+  const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return `${v.hour}:${v.minute}:${v.second}`;
+}
 
 app.get("/api/agent/historico-dia", async (req, res) => {
   try {
@@ -588,6 +728,20 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(data)
       ? data
       : new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+
+    const normalizarHora = (v, fallback) => {
+      const s=String(v||"").trim();
+      const m=s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if(!m) return fallback;
+      const h=Math.max(0,Math.min(23,Number(m[1]))),min=Math.max(0,Math.min(59,Number(m[2]))),sec=Math.max(0,Math.min(59,Number(m[3]||0)));
+      return String(h).padStart(2,"0")+":"+String(min).padStart(2,"0")+":"+String(sec).padStart(2,"0");
+    };
+    const inicio=normalizarHora(req.query?.inicio||req.query?.hora_inicio,"00:00:00");
+    const fim=normalizarHora(req.query?.fim||req.query?.hora_fim,"23:59:59");
+    const dentroDaFaixa = iso => {
+      const h=localTime(iso);
+      return !!h && h>=inicio && h<=fim;
+    };
 
     const business = await findExistingBusinessUser();
     const token = String(business?.token || business?.Token || "").trim();
@@ -672,7 +826,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     const vistos = new Set();
 
     for (const m of readWuzapiHistory().filter(isAuthorizedHistoryEntry)) {
-      if (localDate(m?.timestamp) !== targetDate) continue;
+      if (localDate(m?.timestamp) !== targetDate || !dentroDaFaixa(m?.timestamp)) continue;
       const id = String(m?.message_id || "");
       const phone = String(m?.sender_alt || m?.sender_jid || "").replace(/@.*/, "").replace(/\D/g, "");
       const pessoa = nomePorPhone.get(phone) || nomePorJid.get(String(m?.sender_jid || "")) || String(m?.pessoa || "Remetente");
@@ -757,6 +911,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
       const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       return localDate(v?.recebido_em) === targetDate &&
+        dentroDaFaixa(v?.recebido_em) &&
         (ids.has(id) || Object.values(phonesByName).includes(remetente));
     }).map(v => {
       const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
@@ -781,6 +936,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     res.json({
       ok:true,
       data:targetDate,
+      faixa:{inicio,fim},
       pessoas:pessoasEncontradas,
       mensagens_historico:historico.length,
       mensagens:historico.map(m=>({
@@ -1214,13 +1370,38 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
         .replace(/@.*/, "")
         .replace(/\D/g, "");
       if (businessJid && recipientPhone === businessJid) {
+        const forwardedPhone=String(c.phone || "").replace(/\D/g, "");
+        const forwardedId=String(info?.ID || info?.Id || info?.id || ("relay-"+Date.now()));
+        const forwardedTs=String(info?.Timestamp || new Date().toISOString());
+        const forwardedText=String(text || "").trim();
+
+        // Guarda uma cópia autorizada no Railway antes do Worker.
+        // Assim o app continua recebendo vendas mesmo se o Cloudflare KV estiver indisponível
+        // e sem depender do LID interno que aparece no WhatsApp de destino.
+        if (forwardedPhone && forwardedText) {
+          appendWuzapiHistory({
+            message_id:forwardedId,
+            timestamp:forwardedTs,
+            pessoa:String(c.businessName || c.name || "Remetente"),
+            sender_jid:forwardedPhone+"@s.whatsapp.net",
+            sender_alt:forwardedPhone+"@s.whatsapp.net",
+            chat_jid:forwardedPhone+"@s.whatsapp.net",
+            tipo:String(info?.Type || "text"),
+            texto:forwardedText,
+            transcricao:forwardedText,
+            is_from_me:false,
+            is_group:false,
+            origem:"relay-local"
+          });
+        }
+
         await fetch("https://gelo-tutoia-whatsapp.claudio41cg.workers.dev", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...payload,
             forwardedToGeloTest: true,
-            forwardedTestSenderPhone: String(c.phone || "").replace(/\D/g, "")
+            forwardedTestSenderPhone: forwardedPhone
           })
         });
         console.log("Teste enviado ao Gelo Tutóia a partir de", c.businessName || c.name);
@@ -1635,7 +1816,16 @@ async function start() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Painel WhatsApp clientes iniciado na porta " + PORT);
     const hoje=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-    setTimeout(async()=>{try{await backfillAuthorizedAudioForDate(hoje);}catch(e){console.error("Falha no backfill de áudio autorizado:",e?.message||e);}finally{logAudioHistoryConfirmation();}},2000);
+    setTimeout(async()=>{
+      try{
+        const r=await backfillAuthorizedAudioForDate(hoje);
+        console.log("AUDIO_BACKFILL_RESULT",JSON.stringify(r));
+      }catch(e){
+        console.error("Falha no backfill de áudio autorizado:",e?.message||e);
+      }finally{
+        logAudioHistoryConfirmation();
+      }
+    },2000);
   });
 }
 
