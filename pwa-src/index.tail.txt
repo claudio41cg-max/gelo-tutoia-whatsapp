@@ -53,10 +53,12 @@ _Gelo Tutoia_`;
 // Clima
 fetch('https://api.open-meteo.com/v1/forecast?latitude=-22.9068&longitude=-43.1729&current=temperature_2m')
   .then(r=>r.json()).then(d=>{
-    document.getElementById('hdr-clima').textContent='🌡️ '+Math.round(d.current.temperature_2m)+'°C';
+    const clima=document.getElementById('hdr-clima');
+    if(clima&&d?.current&&Number.isFinite(Number(d.current.temperature_2m)))clima.textContent='🌡️ '+Math.round(Number(d.current.temperature_2m))+'°C';
   }).catch(()=>{});
 
-document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+const hdrDate=document.getElementById('hdr-date');
+if(hdrDate)hdrDate.textContent=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
 
 const restaurado=restaurarEstado();
 updHdr();
@@ -73,13 +75,13 @@ window.addEventListener('beforeunload',()=>salvarEstado());
 setInterval(()=>salvarEstado(), 5000);
 setTimeout(montarBottomNav,0);
 setTimeout(()=>sincronizarInboxRemoto(false),1500);
-setInterval(()=>{if(!document.hidden)sincronizarInboxRemoto(false)},5000);
+// O polling recorrente é controlado por auto-whatsapp.js para evitar chamadas duplicadas.
 </script>
 
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(e => console.warn('[SW] falha ao registrar:', e));
   });
 }
 </script>
