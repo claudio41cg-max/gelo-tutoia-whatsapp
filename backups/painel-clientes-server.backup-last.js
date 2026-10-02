@@ -179,6 +179,15 @@ if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 initSalesQueue();
 
+function atomicWriteFile(filePath, content){
+  const tmp=filePath+".tmp-"+process.pid+"-"+Date.now();
+  fs.writeFileSync(tmp,content);
+  fs.renameSync(tmp,filePath);
+}
+function atomicWriteJson(filePath, value){
+  atomicWriteFile(filePath,JSON.stringify(value,null,2));
+}
+
 function initSalesQueue(){
   salesDb=new DatabaseSync(SALES_DB_FILE);
   salesDb.exec("PRAGMA journal_mode=WAL;");
@@ -298,7 +307,7 @@ function readSalesSyncState() {
 }
 function writeSalesSyncState(state) {
   const clean={date:String(state?.date||""),cutoff:Number(state?.cutoff||0)||0,ignored_ids:Array.isArray(state?.ignored_ids)?[...new Set(state.ignored_ids.map(String))].slice(-5000):[]};
-  fs.writeFileSync(SALES_SYNC_STATE_FILE,JSON.stringify(clean,null,2));
+  atomicWriteJson(SALES_SYNC_STATE_FILE,clean);
   return clean;
 }
 function readClients() {
@@ -306,7 +315,7 @@ function readClients() {
   catch { return []; }
 }
 function writeClients(clients) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(clients, null, 2));
+  atomicWriteJson(DATA_FILE,clients);
 }
 function readExternalState() {
   try {
@@ -318,7 +327,7 @@ function readExternalState() {
 }
 function writeExternalState(state) {
   const clean = { aiEnabled: state.aiEnabled === true, manualMode: state.manualMode !== false };
-  fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify(clean, null, 2));
+  atomicWriteJson(EXTERNAL_STATE_FILE,clean);
   return clean;
 }
 function readWuzapiHistory() {
@@ -359,7 +368,7 @@ function appendWuzapiHistory(entry) {
   if (id && all.some(x => String(x?.message_id || "") === id)) return;
   all.push(entry);
   const recent = all.slice(-5000);
-  fs.writeFileSync(WUZAPI_HISTORY_FILE, JSON.stringify(recent, null, 2));
+  atomicWriteJson(WUZAPI_HISTORY_FILE,recent);
 }
 
 function mergeWuzapiHistory(messageId, patch = {}) {
@@ -374,7 +383,7 @@ function mergeWuzapiHistory(messageId, patch = {}) {
     if (!isAuthorizedHistoryEntry(entry)) return;
     all.push(entry);
   }
-  fs.writeFileSync(WUZAPI_HISTORY_FILE, JSON.stringify(all.slice(-5000), null, 2));
+  atomicWriteJson(WUZAPI_HISTORY_FILE,all.slice(-5000));
 }
 function audioMessageFromObject(root) {
   const queue=[root]; let steps=0;
