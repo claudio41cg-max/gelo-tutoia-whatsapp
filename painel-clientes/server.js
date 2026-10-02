@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { DatabaseSync } = require("node:sqlite");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
@@ -13,6 +14,8 @@ const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const EXTERNAL_STATE_FILE = path.join(DATA_DIR, "external-controls.json");
 const WUZAPI_HISTORY_FILE = path.join(DATA_DIR, "wuzapi-history.json");
 const SALES_SYNC_STATE_FILE = path.join(DATA_DIR, "sales-sync-state.json");
+const SALES_DB_FILE = path.join(DATA_DIR, "sales.sqlite");
+let salesDb = null;
 const WUZAPI_URL = (process.env.WUZAPI_URL || "https://wuzapi-test-production.up.railway.app").replace(/\/$/, "");
 const ADMIN_TOKEN = process.env.WUZAPI_ADMIN_TOKEN || "";
 const SEED_CLIENT_NAME = String(process.env.SEED_CLIENT_NAME || "").trim();
@@ -38,15 +41,13 @@ app.post("/api/gelo/reset-day", (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Cache-Control", "no-store");
   try {
-    const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
-    const cutoff=Date.now();
-    const atual=readSalesSyncState();
-    writeSalesSyncState({date,cutoff,ignored_ids:atual.ignored_ids||[]});
-    console.log("RESET_DAY_SYNC_CUTOFF", JSON.stringify({date,cutoff}));
-    return res.json({ok:true,date,cutoff});
+    const now=Date.now();
+    const archived=archivePendingSales(now);
+    console.log("SALES_QUEUE_RESET", JSON.stringify({archived,at:now}));
+    return res.json({ok:true,archived,cutoff:now});
   } catch(e) {
-    console.error("Falha ao gravar corte do dia:",e?.message||e);
-    return res.status(500).json({ok:false,error:e?.message||"Falha ao reiniciar sincronização"});
+    console.error("Falha ao arquivar fila do dia:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao reiniciar movimento"});
   }
 });
 
@@ -55,18 +56,57 @@ app.post("/api/gelo/ignore-sale", (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
     const messageId=String(req.body?.message_id||"").trim();
-    if(!messageId) return res.status(400).json({ok:false,error:"message_id obrigatório"});
-    const date = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
-    const atual=readSalesSyncState();
-    const ids=new Set(Array.isArray(atual.ignored_ids)?atual.ignored_ids.map(String):[]);
-    ids.add(messageId);
-    writeSalesSyncState({date:atual.date||date,cutoff:Number(atual.cutoff||0),ignored_ids:[...ids]});
-    console.log("IGNORE_SALE_MESSAGE_ID", messageId);
-    return res.json({ok:true,message_id:messageId});
+    const remoteId=String(req.body?.remote_id||"").trim();
+    if(!messageId&&!remoteId) return res.status(400).json({ok:false,error:"message_id ou remote_id obrigatório"});
+    const changed=remoteId
+      ? setSaleStatus(remoteId,"deleted")
+      : deleteSalesByMessageId(messageId);
+    console.log("SALES_QUEUE_DELETE", JSON.stringify({messageId,remoteId,changed}));
+    return res.json({ok:true,changed,message_id:messageId||null,remote_id:remoteId||null});
   } catch(e) {
-    console.error("Falha ao ignorar venda:",e?.message||e);
-    return res.status(500).json({ok:false,error:e?.message||"Falha ao ignorar venda"});
+    console.error("Falha ao excluir venda da fila:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao excluir venda"});
   }
+});
+
+app.post("/api/gelo/queue/upsert", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try{
+    const items=Array.isArray(req.body?.items)?req.body.items:[];
+    let inserted=0,existing=0;
+    for(const item of items){
+      const r=upsertPendingSale(item);
+      if(r==="inserted") inserted++;
+      else if(r==="existing") existing++;
+    }
+    return res.json({ok:true,inserted,existing,total:items.length});
+  }catch(e){
+    console.error("Falha ao gravar fila de vendas:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao gravar fila"});
+  }
+});
+
+app.post("/api/gelo/queue/status", (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Cache-Control", "no-store");
+  try{
+    const remoteId=String(req.body?.remote_id||"").trim();
+    const status=String(req.body?.status||"").trim().toLowerCase();
+    if(!remoteId) return res.status(400).json({ok:false,error:"remote_id obrigatório"});
+    if(!["pending","launched","deleted","archived"].includes(status)) return res.status(400).json({ok:false,error:"status inválido"});
+    const changed=setSaleStatus(remoteId,status);
+    return res.json({ok:true,changed,remote_id:remoteId,status});
+  }catch(e){
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao atualizar status"});
+  }
+});
+
+app.get("/api/gelo/queue/stats", (req,res)=>{
+  res.set("Access-Control-Allow-Origin","*");
+  res.set("Cache-Control","no-store");
+  try{return res.json({ok:true,stats:salesQueueStats()})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar fila"})}
 });
 
 app.get("/api/gelo/inbox-local", (req, res) => {
@@ -120,24 +160,15 @@ app.get("/api/gelo/inbox-local", (req, res) => {
   }
 });
 
-app.get("/api/gelo/inbox", async (req, res) => {
+app.get("/api/gelo/inbox", (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Cache-Control", "no-store");
   try {
-    const rr = await fetch(GELO_INBOX_URL + (GELO_INBOX_URL.includes("?") ? "&" : "?") + "ts=" + Date.now(), {
-      headers: { Accept: "application/json" }
-    });
-    const textBody = await rr.text();
-    let data = {};
-    try { data = JSON.parse(textBody || "{}"); } catch {}
-    if (!rr.ok) {
-      console.error("Worker inbox falhou:", rr.status, String(textBody || "").slice(0, 1200));
-      return res.status(502).json({ ok:false, error:"Worker inbox HTTP " + rr.status, detail:String(textBody || "").slice(0, 600) });
-    }
-    return res.json({ ok:true, vendas:Array.isArray(data?.vendas) ? data.vendas : [] });
+    const vendas=listPendingSales();
+    return res.json({ok:true,vendas,source:"railway-sqlite",atualizado_em:new Date().toISOString()});
   } catch (e) {
-    console.error("Falha no proxy do inbox Gelo Tutóia:", e?.message || e);
-    return res.status(502).json({ ok:false, error:e?.message || "Falha ao buscar inbox" });
+    console.error("Falha ao ler fila SQLite do Gelo Tutóia:", e?.message || e);
+    return res.status(500).json({ ok:false, error:e?.message || "Falha ao buscar fila de vendas" });
   }
 });
 
@@ -146,6 +177,118 @@ if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: false, manualMode: true }, null, 2));
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
+initSalesQueue();
+
+function initSalesQueue(){
+  salesDb=new DatabaseSync(SALES_DB_FILE);
+  salesDb.exec("PRAGMA journal_mode=WAL;");
+  salesDb.exec("PRAGMA synchronous=NORMAL;");
+  salesDb.exec(`
+    CREATE TABLE IF NOT EXISTS sales_queue(
+      remote_id TEXT PRIMARY KEY,
+      remote_key TEXT,
+      message_id TEXT NOT NULL,
+      received_ms INTEGER NOT NULL,
+      received_at TEXT,
+      transcription TEXT,
+      client TEXT,
+      qty INTEGER,
+      product_type TEXT,
+      payment TEXT,
+      confidence TEXT,
+      sender TEXT,
+      sender_name TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_ms INTEGER NOT NULL,
+      updated_ms INTEGER NOT NULL,
+      launched_ms INTEGER,
+      deleted_ms INTEGER,
+      archived_ms INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_sales_queue_status_received ON sales_queue(status, received_ms);
+    CREATE INDEX IF NOT EXISTS idx_sales_queue_message ON sales_queue(message_id);
+  `);
+  console.log("SALES_QUEUE_SQLITE_READY", SALES_DB_FILE);
+}
+function normalizeQueueTimestamp(v){
+  if(v==null||v==="")return Date.now();
+  if(typeof v==="number")return v<1e12?v*1000:v;
+  const s=String(v).trim();
+  if(/^\d{10}$/.test(s))return Number(s)*1000;
+  if(/^\d{13}$/.test(s))return Number(s);
+  const t=Date.parse(s);return Number.isFinite(t)?t:Date.now();
+}
+function upsertPendingSale(item={}){
+  if(!salesDb)throw new Error("Fila SQLite indisponível");
+  const remoteId=String(item.remote_id||"").trim();
+  if(!remoteId)return "invalid";
+  const messageId=String(item.message_id||item.remote_key||remoteId).replace(/^mensagem:/,"").trim();
+  const now=Date.now();
+  const receivedMs=normalizeQueueTimestamp(item.recebido_em||item.timestamp_ms||item.timestamp);
+  const existing=salesDb.prepare("SELECT status FROM sales_queue WHERE remote_id=?").get(remoteId);
+  if(existing){
+    if(existing.status==="pending"){
+      salesDb.prepare(`UPDATE sales_queue SET
+        remote_key=?,message_id=?,received_ms=?,received_at=?,transcription=?,client=?,qty=?,product_type=?,payment=?,confidence=?,sender=?,sender_name=?,updated_ms=?
+        WHERE remote_id=? AND status='pending'`).run(
+          String(item.remote_key||""),messageId,receivedMs,String(item.recebido_em||new Date(receivedMs).toISOString()),
+          String(item.transcricao||item.transcription||""),String(item.cliente||item.client||""),Number(item.qtd||item.qty||0),
+          String(item.tipo||item.product_type||""),String(item.pagamento||item.payment||"Não informado"),
+          String(item.confianca||item.confidence||""),String(item.remetente||item.sender||""),
+          String(item.nome_remetente||item.sender_name||""),now,remoteId
+        );
+    }
+    return "existing";
+  }
+  salesDb.prepare(`INSERT INTO sales_queue(
+    remote_id,remote_key,message_id,received_ms,received_at,transcription,client,qty,product_type,payment,confidence,sender,sender_name,status,created_ms,updated_ms
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`).run(
+    remoteId,String(item.remote_key||""),messageId,receivedMs,String(item.recebido_em||new Date(receivedMs).toISOString()),
+    String(item.transcricao||item.transcription||""),String(item.cliente||item.client||""),Number(item.qtd||item.qty||0),
+    String(item.tipo||item.product_type||""),String(item.pagamento||item.payment||"Não informado"),
+    String(item.confianca||item.confidence||""),String(item.remetente||item.sender||""),
+    String(item.nome_remetente||item.sender_name||""),now,now
+  );
+  return "inserted";
+}
+function listPendingSales(){
+  if(!salesDb)return[];
+  const rows=salesDb.prepare("SELECT * FROM sales_queue WHERE status='pending' ORDER BY received_ms ASC").all();
+  return rows.map(r=>({
+    remote_id:r.remote_id,remote_key:r.remote_key,message_id:r.message_id,
+    recebido_em:r.received_at||new Date(Number(r.received_ms)||Date.now()).toISOString(),
+    timestamp_ms:Number(r.received_ms)||0,transcricao:r.transcription||"",
+    cliente:r.client||"",qtd:Number(r.qty)||0,tipo:r.product_type||"",
+    pagamento:r.payment||"Não informado",confianca:r.confidence||"",
+    remetente:r.sender||"",nome_remetente:r.sender_name||"",status:r.status
+  }));
+}
+function setSaleStatus(remoteId,status){
+  if(!salesDb)return 0;
+  const now=Date.now();
+  let extra="";
+  if(status==="launched")extra=", launched_ms="+now;
+  else if(status==="deleted")extra=", deleted_ms="+now;
+  else if(status==="archived")extra=", archived_ms="+now;
+  const r=salesDb.prepare("UPDATE sales_queue SET status=?, updated_ms=?"+extra+" WHERE remote_id=?").run(status,now,String(remoteId));
+  return Number(r.changes||0);
+}
+function deleteSalesByMessageId(messageId){
+  if(!salesDb)return 0;
+  const now=Date.now();
+  const r=salesDb.prepare("UPDATE sales_queue SET status='deleted',updated_ms=?,deleted_ms=? WHERE message_id=? AND status!='deleted'").run(now,now,String(messageId));
+  return Number(r.changes||0);
+}
+function archivePendingSales(now=Date.now()){
+  if(!salesDb)return 0;
+  const r=salesDb.prepare("UPDATE sales_queue SET status='archived',updated_ms=?,archived_ms=? WHERE status='pending'").run(now,now);
+  return Number(r.changes||0);
+}
+function salesQueueStats(){
+  if(!salesDb)return{};
+  const rows=salesDb.prepare("SELECT status,COUNT(*) total FROM sales_queue GROUP BY status").all();
+  return Object.fromEntries(rows.map(r=>[r.status,Number(r.total)||0]));
+}
 
 function readSalesSyncState() {
   try {
