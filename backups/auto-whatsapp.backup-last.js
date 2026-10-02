@@ -5,6 +5,7 @@
   const PANEL_LOCAL_FEED='https://painel-clientes-production.up.railway.app/api/gelo/inbox-local';
   const PANEL_RESET_DAY='https://painel-clientes-production.up.railway.app/api/gelo/reset-day';
   const PANEL_IGNORE_SALE='https://painel-clientes-production.up.railway.app/api/gelo/ignore-sale';
+  const PANEL_QUEUE_STATUS='https://painel-clientes-production.up.railway.app/api/gelo/queue/status';
   let gtSyncGeneration=0;
   let gtResetEmAndamento=false;
   const GT_RESET_CUTOFF_KEY='gelo_tutoia_reset_cutoff_v1';
@@ -50,16 +51,17 @@
         gtResetEmAndamento=true;
         gtSyncGeneration++;
         try{
-          ignorarIdsAtuais();
-          let corteAgora=Date.now();
           try{
             const rr=await fetch(PANEL_RESET_DAY+'?ts='+Date.now(),{method:'POST',cache:'no-store'});
-            const dd=await rr.json().catch(()=>({}));
-            if(rr.ok&&Number(dd?.cutoff)>0)corteAgora=Number(dd.cutoff);
-          }catch(e){console.warn('Falha ao gravar reset no servidor',e)}
-          localStorage.setItem(GT_RESET_CUTOFF_KEY,String(corteAgora));
+            if(!rr.ok)throw new Error('HTTP '+rr.status);
+          }catch(e){
+            console.warn('Falha ao arquivar fila no servidor',e);
+            return toast('⚠ Não consegui reiniciar agora');
+          }
           vendasRecebidas.splice(0,vendasRecebidas.length);
           salvarInbox();
+          localStorage.removeItem(GT_RESET_CUTOFF_KEY);
+          localStorage.removeItem(GT_IGNORED_REMOTE_IDS_KEY);
           S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
           salvarEstado();salvarDiaNoHistorico();updHdr();telaClientes();toast('✓ Novo dia!');
         }finally{
@@ -148,7 +150,6 @@
       // Só vendas novas e ainda pendentes podem entrar automaticamente no movimento do dia.
       // Itens que já estão em Confirmadas servem apenas como histórico e nunca são relançados.
       if(v.status!=='Pendente'||!v.remoteId||!hoje(v.criadoEm))continue;
-      if(idsIgnorados().has(String(v.remoteId)))continue;
       if(!vendaLocalValida(v))continue;
 
       if(!jaLancada(v.remoteId)){
@@ -158,7 +159,13 @@
         if(v.confianca==='revisar'||!['PIX','Dinheiro','Fiado'].includes(v.pag))revisar++;
       }
 
-      v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='pendente';alterou=true;
+      v.status='Confirmada';v.origem='WhatsApp automático';v.syncRemoto='ok';alterou=true;
+      fetch(PANEL_QUEUE_STATUS,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({remote_id:String(v.remoteId),status:'launched'}),
+        cache:'no-store'
+      }).catch(e=>console.warn('Falha ao marcar venda como lançada no servidor',e));
     }
     if(alterou){
       // Durante os testes, toda venda reconhecível entra direto no movimento do dia.
@@ -198,16 +205,12 @@
       if(v.remoteId)set.add(String(v.remoteId));
       salvarIdsIgnorados(set);
 
-      let messageId=String(v?.sourceMessageId||'').trim();
-      if(!messageId && /^railway-/.test(String(v?.remoteId||''))){
-        messageId=String(v.remoteId).replace(/^railway-/,'').replace(/-\d+$/,'');
-      }
-      if(messageId){
+      if(v.remoteId){
         try{
-          await fetch(PANEL_IGNORE_SALE,{
+          await fetch(PANEL_QUEUE_STATUS,{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({message_id:messageId}),
+            body:JSON.stringify({remote_id:String(v.remoteId),status:'deleted'}),
             cache:'no-store'
           });
         }catch(e){console.warn('Falha ao persistir exclusão da venda no Railway',e)}
@@ -351,6 +354,7 @@
           id:'remoto-'+remoteId,
           remoteId,
           remoteKey:String(x?.remote_key||''),
+          sourceMessageId:String(x?.message_id||''),
           criadoEm:x?.recebido_em||new Date().toISOString(),
           hora:horaDaDataIso(x?.recebido_em),
           origem:'WhatsApp automático',
@@ -378,15 +382,13 @@
     syncRapidoEmAndamento=true;
     const minhaGeracao=gtSyncGeneration;
     try{
-      const resultado=await sincronizarViaHistoricoLocal(mostrarAviso);
+      const resultado=await sincronizarViaPainel(mostrarAviso);
       if(resultado?.ok){
         if(minhaGeracao!==gtSyncGeneration||gtResetEmAndamento)return {ok:false,reset:true};
-        limparAntesDoCorte();
-        removerIdsIgnorados();
         const total=integrar();
         if(mostrarAviso&&!total&&resultado?.novas)toast('📥 '+resultado.novas+' venda(s) recebida(s)');
-        else if(mostrarAviso&&!total&&!resultado?.novas&&resultado?.via!=='painel')toast('✓ WhatsApp atualizado');
-      }else if(mostrarAviso&&resultado?.via!=='painel'){
+        else if(mostrarAviso&&!total&&!resultado?.novas)toast('✓ WhatsApp atualizado');
+      }else if(mostrarAviso){
         toast('⚠ Não consegui buscar vendas agora');
       }
       return resultado;
