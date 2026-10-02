@@ -62,7 +62,7 @@ h1{font-size:26px;line-height:1.07;margin:5px 0 5px}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(7px);display:none;align-items:flex-end;justify-content:center;padding:14px;z-index:20}.modal.open{display:flex}
 .box{width:min(540px,100%);background:#0e1914;border:1px solid #26392f;border-radius:24px;padding:18px 17px calc(18px + env(safe-area-inset-bottom));box-shadow:0 24px 80px rgba(0,0,0,.5)}
 .boxHead{display:flex;align-items:center;justify-content:space-between;gap:10px}.box h2{font-size:20px;margin:0}.close{width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:#15221c;color:#fff;font-size:20px}
-.field{margin:14px 0}.field label{display:block;margin-bottom:7px;font-size:12px;font-weight:750;color:#a8b9b0}.field input{width:100%;padding:13px 14px;border-radius:13px;border:1px solid #293d32;background:#08110d;color:#fff;outline:none}.field input:focus{border-color:#3a8558;box-shadow:0 0 0 3px rgba(37,211,102,.08)}
+.field{margin:14px 0}.field label{display:block;margin-bottom:7px;font-size:12px;font-weight:750;color:#a8b9b0}.field input,.field select,.field textarea{box-sizing:border-box;width:100%;padding:13px 14px;border-radius:13px;border:1px solid #293d32;background:#08110d;color:#fff;outline:none;font:inherit}.field textarea{min-height:180px;resize:vertical}.field input:focus,.field select:focus,.field textarea:focus{border-color:#3a8558;box-shadow:0 0 0 3px rgba(37,211,102,.08)}
 .qr{text-align:center}.qr img{width:min(300px,76vw);background:#fff;padding:10px;border-radius:18px;margin-top:10px}
 .notice{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.45}.hint{background:#0c1712;border:1px solid #1d3026;border-radius:14px;padding:11px;margin-top:12px;color:#b8c8c0;font-size:12px}
 @media(min-width:720px){.app{padding-left:24px;padding-right:24px}.fab{display:none}.hero{padding-top:28px}.modal{align-items:center}.toolbar .btn{display:inline-flex}}
@@ -115,8 +115,11 @@ h1{font-size:26px;line-height:1.07;margin:5px 0 5px}
     <div class="boxHead"><h2>Novo cliente</h2><button class="close" onclick="closeNew()">×</button></div>
     <div class="hint">Cadastre o responsável e o número que será conectado ao agente.</div>
     <div class="field"><label>Nome do responsável</label><input id="name" autocomplete="name" placeholder="Ex.: João"></div>
-    <div class="field"><label>Nome da empresa</label><input id="businessName" placeholder="Ex.: Pizzaria do João"></div>
+    <div class="field"><label>Nome da empresa</label><input id="businessName" placeholder="Ex.: Salão da Maria"></div>
     <div class="field"><label>WhatsApp</label><input id="phone" inputmode="tel" placeholder="Ex.: 21999999999"></div>
+    <div class="field"><label>Tipo de negócio</label><select id="businessType" onchange="businessTypeChanged()"><option value="geral">Geral</option><option value="salao">Salão de beleza / cabeleireiro</option><option value="barbearia">Barbearia</option><option value="restaurante">Restaurante</option><option value="loja">Loja</option></select></div>
+    <div class="field"><label>Prompt do agente</label><textarea id="aiPrompt" placeholder="Regras e instruções que a IA deve seguir neste WhatsApp."></textarea></div>
+    <div class="actions"><button type="button" class="btn secondary" onclick="fillSalonPrompt()">Usar prompt de salão</button></div>
     <div class="actions"><button class="btn primary" onclick="createClient()">Criar cliente</button><button class="btn secondary" onclick="closeNew()">Cancelar</button></div>
     <div id="newMsg" class="notice"></div>
   </div>
@@ -143,7 +146,7 @@ async function health(){try{const h=await api('/api/health');const ok=!!h.wuzapi
 async function load(){const box=el('clients');try{const list=await api('/api/clients');el('totalCount').textContent=list.length;el('onlineCount').textContent=list.filter(x=>x.loggedIn).length;el('aiCount').textContent=list.filter(x=>x.aiEnabled).length;if(!list.length){box.innerHTML='<div class="empty"><div class="emptyIcon">💬</div><strong>Nenhum cliente cadastrado</strong><div style="margin-top:7px">Toque no botão + para adicionar o primeiro WhatsApp.</div></div>';return}box.innerHTML=list.map(c=>`
 <div class="card">
   <div class="row">
-    <div><div class="name">${esc(c.businessName||c.name)}</div><div class="person">${esc(c.name)} · ${esc(c.phone)}</div></div>
+    <div><div class="name">${esc(c.businessName||c.name)}</div><div class="person">${esc(c.name)} · ${esc(c.phone)} · ${esc(c.businessType||'geral')}</div></div>
     <span class="badge ${c.loggedIn?'ok':''}">${c.loggedIn?'Conectado':'Desconectado'}</span>
   </div>
   <div class="controls">
@@ -156,11 +159,63 @@ async function load(){const box=el('clients');try{const list=await api('/api/cli
       : '<button class="btn primary" onclick="connectClient(\''+c.id+'\')">'+(c.loggedIn?'Ver conexão':'Conectar WhatsApp')+'</button><button class="btn secondary" onclick="refreshStatus(\''+c.id+'\')">Status</button>'+(c.connected?'<button class="btn danger" onclick="disconnectClient(\''+c.id+'\')">Desconectar</button>':'')}
   </div>
 </div>`).join('')}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
+const SALON_PROMPT=`Você é a atendente virtual de vendas e agendamentos do salão [NOME DO SALÃO].
+
+OBJETIVO:
+Atender clientes pelo WhatsApp, entender o que desejam, tirar dúvidas, apresentar serviços e conduzir naturalmente até o agendamento.
+
+TOM:
+- Português do Brasil.
+- Simpática, acolhedora, natural e objetiva.
+- Mensagens curtas.
+- Uma pergunta de cada vez.
+- Não pareça robô.
+- Nunca invente preço, horário, serviço ou profissional.
+
+PRIMEIRO CONTATO:
+Cumprimente de forma natural e pergunte como pode ajudar.
+Exemplo: "Oi 😊 Seja bem-vinda ao [NOME DO SALÃO]. Como posso te ajudar hoje?"
+
+SERVIÇOS E PREÇOS:
+Use somente os serviços e preços informados pelo salão.
+Se o valor depender do tamanho, volume ou condição do cabelo, explique que pode variar e faça as perguntas necessárias.
+Nunca invente valor.
+
+AGENDAMENTO:
+Antes de confirmar, obtenha nome da cliente, serviço, dia, horário ou período desejado e profissional de preferência, se houver.
+Nunca confirme horário sem ter informação de disponibilidade.
+Se não houver agenda integrada, diga que a equipe vai confirmar o horário.
+
+VENDA COMPLEMENTAR:
+Pode sugerir no máximo um serviço complementar que faça sentido, sem insistência.
+Ex.: escova + hidratação.
+
+QUÍMICAS:
+Não garanta resultado. Quando necessário, recomende avaliação presencial.
+
+HORÁRIO INDISPONÍVEL:
+Ofereça outro horário, outro dia, outro profissional ou lista de espera.
+
+ATENDIMENTO HUMANO:
+Encaminhe para uma pessoa quando houver reclamação, dúvida não cadastrada, situação sensível, orçamento que dependa de avaliação ou quando a cliente pedir.
+
+REGRA PRINCIPAL:
+O objetivo é transformar interesse em agendamento de forma natural e sem pressão. Nunca invente informações.`;
+
+function fillSalonPrompt(){
+  const name=(el('businessName').value||'[NOME DO SALÃO]').trim();
+  el('businessType').value='salao';
+  el('aiPrompt').value=SALON_PROMPT.replaceAll('[NOME DO SALÃO]',name||'[NOME DO SALÃO]');
+}
+function businessTypeChanged(){
+  if(el('businessType').value==='salao'&&!el('aiPrompt').value.trim())fillSalonPrompt();
+}
+
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function backdrop(e,id){if(e.target.id===id)document.getElementById(id).classList.remove('open')}
 function openNew(){el('newMsg').textContent='';el('newModal').classList.add('open');setTimeout(()=>el('name').focus(),120)}
 function closeNew(){el('newModal').classList.remove('open')}
-async function createClient(){el('newMsg').textContent='Criando cliente…';try{await api('/api/clients',{method:'POST',body:JSON.stringify({name:el('name').value,businessName:el('businessName').value,phone:el('phone').value})});closeNew();el('name').value=el('businessName').value=el('phone').value='';await load()}catch(e){el('newMsg').textContent=e.message}}
+async function createClient(){el('newMsg').textContent='Criando cliente…';try{await api('/api/clients',{method:'POST',body:JSON.stringify({name:el('name').value,businessName:el('businessName').value,phone:el('phone').value,businessType:el('businessType').value,aiPrompt:el('aiPrompt').value})});closeNew();el('name').value='';el('businessName').value='';el('phone').value='';el('businessType').value='geral';el('aiPrompt').value='';await load()}catch(e){el('newMsg').textContent=e.message}}
 async function controls(id,key,value){try{await api('/api/clients/'+id+'/controls',{method:'PATCH',body:JSON.stringify({[key]:value})});await load()}catch(e){alert(e.message)}}
 async function connectClient(id){try{await api('/api/clients/'+id+'/connect',{method:'POST',body:'{}'});el('qrModal').classList.add('open');el('qrArea').textContent='Gerando QR Code…';setTimeout(()=>showQr(id),900)}catch(e){alert(e.message)}}
 async function showQr(id){try{const q=await api('/api/clients/'+id+'/qr');el('qrArea').innerHTML=q.qr?'<img src="'+q.qr+'" alt="QR Code"><p class="notice">Leia este código com o celular do cliente.</p>':'<p class="notice">QR ainda não disponível. Aguarde alguns segundos e tente novamente.</p>'}catch(e){el('qrArea').textContent=e.message}}
