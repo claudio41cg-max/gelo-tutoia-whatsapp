@@ -36,6 +36,15 @@ const SALON_SEED_NAME = String(process.env.SALON_SEED_NAME || "").trim();
 const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || "").trim();
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
+const PANEL_ACCESS_KEY = String(process.env.PANEL_ACCESS_KEY || "").trim();
+
+app.use("/api/clients",(req,res,next)=>{
+  const supplied=String(req.get("x-panel-key")||"").trim();
+  if(!PANEL_ACCESS_KEY)return res.status(503).json({error:"Chave do painel não configurada."});
+  if(supplied!==PANEL_ACCESS_KEY)return res.status(401).json({error:"Chave do painel inválida."});
+  next();
+});
+
 
 app.post("/api/gelo/reset-day", (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
