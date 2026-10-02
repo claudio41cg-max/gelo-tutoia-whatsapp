@@ -6,6 +6,35 @@ const { DatabaseSync } = require("node:sqlite");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
+
+function panelBasicAuth(req,res,next){
+  const publicPath =
+    req.path.startsWith("/api/gelo/") ||
+    req.path.startsWith("/api/webhooks/") ||
+    req.path === "/api/health";
+  if(publicPath)return next();
+
+  const user=String(process.env.PANEL_BASIC_USER||"").trim();
+  const pass=String(process.env.PANEL_BASIC_PASS||"");
+  if(!user||!pass)return res.status(503).send("Painel administrativo sem credenciais configuradas.");
+
+  const header=String(req.get("authorization")||"");
+  if(!header.startsWith("Basic ")){
+    res.set("WWW-Authenticate",'Basic realm="Gelo Tutoia - Painel", charset="UTF-8"');
+    return res.status(401).send("Autenticação necessária.");
+  }
+  let decoded="";
+  try{decoded=Buffer.from(header.slice(6),"base64").toString("utf8")}catch{}
+  const sep=decoded.indexOf(":");
+  const gotUser=sep>=0?decoded.slice(0,sep):"";
+  const gotPass=sep>=0?decoded.slice(sep+1):"";
+  if(gotUser!==user||gotPass!==pass){
+    res.set("WWW-Authenticate",'Basic realm="Gelo Tutoia - Painel", charset="UTF-8"');
+    return res.status(401).send("Usuário ou senha inválidos.");
+  }
+  next();
+}
+app.use(panelBasicAuth);
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
@@ -36,14 +65,6 @@ const SALON_SEED_NAME = String(process.env.SALON_SEED_NAME || "").trim();
 const SALON_SEED_BUSINESS_NAME = String(process.env.SALON_SEED_BUSINESS_NAME || "").trim();
 const SALON_SEED_PHONE = String(process.env.SALON_SEED_PHONE || "").trim();
 const SALON_SEED_ACTIVATE_V1 = String(process.env.SALON_SEED_ACTIVATE_V1 || "").trim().toLowerCase() === "true";
-const PANEL_ACCESS_KEY = String(process.env.PANEL_ACCESS_KEY || "").trim();
-
-app.use("/api/clients",(req,res,next)=>{
-  const supplied=String(req.get("x-panel-key")||"").trim();
-  if(!PANEL_ACCESS_KEY)return res.status(503).json({error:"Chave do painel não configurada."});
-  if(supplied!==PANEL_ACCESS_KEY)return res.status(401).json({error:"Chave do painel inválida."});
-  next();
-});
 
 
 app.post("/api/gelo/reset-day", (req, res) => {
