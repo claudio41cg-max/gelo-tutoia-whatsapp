@@ -1,5 +1,6 @@
 import { interpretarVenda, interpretarVendas } from "./parser.js";
 const VERIFY_TOKEN="gelo-tutoia-2026",GRAPH_VERSION="v26.0",TRANSCRIBE_MODEL="@cf/openai/whisper-large-v3-turbo",CONFIG_KEY="config:clientes";
+const RAILWAY_SALES_QUEUE="https://painel-clientes-production.up.railway.app/api/gelo/queue/upsert";
 function corsHeaders(){return{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type","Cache-Control":"no-store"}}
 function json(data,init={}){return new Response(JSON.stringify(data),{...init,headers:{"Content-Type":"application/json; charset=utf-8",...corsHeaders(),...(init.headers||{})}})}
 function somenteDigitos(v=""){return String(v).replace(/\D/g,"")}
@@ -37,7 +38,26 @@ async function indexarMensagemDia(env,key,iso){
   await env.VENDAS.put(idxKey,JSON.stringify({keys:prox,atualizado_em:new Date().toISOString()}),{expirationTtl:259200});
 }
 async function salvar(env,key,dados){if(!env.VENDAS||!key)return;const atual=await env.VENDAS.get(key,{type:"json"})||{};await env.VENDAS.put(key,JSON.stringify({...atual,...dados,atualizado_em:new Date().toISOString()}))}
-async function interpretar(env,key,texto,remetente,origem="meta"){
+async function enviarFilaRailway(env,key){
+  try{
+    if(!env.VENDAS)return;
+    const reg=await env.VENDAS.get(key,{type:"json"})||{};
+    const items=itensVendaDoRegistro(key,reg).map(x=>({
+      ...x,
+      message_id:String(reg?.mensagem_id||key.replace(/^mensagem:/,""))
+    }));
+    if(!items.length)return;
+    const rr=await fetch(RAILWAY_SALES_QUEUE,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({items})
+    });
+    if(!rr.ok)console.log("Gelo Tutóia - fila Railway HTTP",rr.status);
+  }catch(e){
+    console.log("Gelo Tutóia - falha ao gravar fila Railway:",String(e));
+  }
+}
+async function interpretar(env,key,texto,remetente,origem="meta",queueEnabled=true){
   const config=await getConfig(env);
   const vendas=interpretarVendas(texto,config).filter(v=>v&&v.cliente&&v.total_sacos>0);
   const permitido=autoConfigurado(env,origem)&&remetenteAutorizado(env,remetente);
@@ -46,6 +66,7 @@ async function interpretar(env,key,texto,remetente,origem="meta"){
   const auto_elegivel=preparadas.length===1?preparadas[0].auto_elegivel:false;
   await salvar(env,key,{status:"venda_interpretada",venda,vendas:preparadas,auto_elegivel,origem,interpretado_em:new Date().toISOString()});
   console.log("Gelo Tutóia - vendas interpretadas:",JSON.stringify(preparadas));
+  if(queueEnabled)await enviarFilaRailway(env,key);
   return {venda,vendas:preparadas,auto_elegivel};
 }
 function itensVendaDoRegistro(key,reg){
@@ -281,7 +302,7 @@ if(wz?.wuzapi){
   let transcricao="",interpretacao=null,erroProcessamento="";
   if(wz.texto){
     transcricao=wz.texto;
-    try{interpretacao=await interpretar(env,key,wz.texto,remetente,"wuzapi")}catch(e){erroProcessamento=String(e);await salvar(env,key,{status:"erro_parser",erro_parser:erroProcessamento})}
+    try{interpretacao=await interpretar(env,key,wz.texto,remetente,"wuzapi",!replayHistoricoInterno)}catch(e){erroProcessamento=String(e);await salvar(env,key,{status:"erro_parser",erro_parser:erroProcessamento})}
   }
   else if(wz.audio){
     if(!wz.base64)await salvar(env,key,{status:"audio_wuzapi_sem_base64"});
@@ -290,7 +311,7 @@ if(wz?.wuzapi){
       await salvar(env,key,{status:"audio_baixado",audio_bytes:audio.byteLength,origem_audio:"wuzapi"});
       transcricao=await transcreverAudio(env,audio);
       await salvar(env,key,{status:"transcrito",texto:transcricao,transcricao,modelo_transcricao:TRANSCRIBE_MODEL,transcrito_em:new Date().toISOString()});
-      interpretacao=await interpretar(env,key,transcricao,remetente,"wuzapi");
+      interpretacao=await interpretar(env,key,transcricao,remetente,"wuzapi",!replayHistoricoInterno);
     }catch(e){erroProcessamento=String(e);await salvar(env,key,{status:"erro_transcricao",erro_transcricao:erroProcessamento})}
   }else{
     await salvar(env,key,{status:"wuzapi_sem_texto"});
