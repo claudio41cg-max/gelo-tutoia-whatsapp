@@ -194,10 +194,12 @@ function resolverDataPedido(texto=''){
   return shift(0);
 }
 
-async function historicoDia(data='',retry=true){
+async function historicoDia(data='',faixa=null,retry=true){
   const auth=await token();
   const qs=new URLSearchParams();
   if(data)qs.set('data',String(data).trim());
+  if(faixa&&faixa.inicio)qs.set('inicio',String(faixa.inicio));
+  if(faixa&&faixa.fim)qs.set('fim',String(faixa.fim));
   const r=await fetch(TURBO+'/__turbo/gelo-history?'+qs.toString(),{
     method:'GET',
     headers:{'authorization':'Bearer '+auth,'accept':'application/json'},
@@ -206,27 +208,34 @@ async function historicoDia(data='',retry=true){
   const d=await r.json().catch(()=>({}));
   if(r.status===401&&retry){
     localStorage.removeItem(TOKEN_KEY);
-    return historicoDia(data,false);
+    return historicoDia(data,faixa,false);
   }
   if(!r.ok||!d?.ok)throw new Error(d?.error||'Não consegui ler o histórico do dia.');
   return d;
 }
 
 async function relatorioDia(data='',pedido=''){
-  const historico=await historicoDia(data);
   const faixa=resolverFaixaHorario(pedido);
+  const historico=await historicoDia(data,faixa);
   const mensagens=filtrarFaixa(Array.isArray(historico.mensagens)?historico.mensagens:[],faixa,'recebido_em');
   const vendas=filtrarFaixa(Array.isArray(historico.vendas)?historico.vendas:[],faixa,'recebido_em');
   const faixaTexto=faixa?(' Considere somente o intervalo '+faixa.inicio.slice(0,5)+'–'+faixa.fim.slice(0,5)+'.'):'';
   const mensagem=String(pedido||'').trim()||
-    ('Analise os registros internos de venda deste dia.'+faixaTexto+' Para cada venda, reduza falas longas ao essencial: cliente, quantidade, pagamento e produto somente quando necessário. Não faça perguntas de atendimento. Gere um relatório curto em formato de bloco de notas, em ordem cronológica, com totais quando os dados permitirem. Não invente nada.');
+    ('Analise os registros internos de venda deste dia.'+faixaTexto+' Use primeiro a lista estruturada de vendas do sistema como fonte principal. Use as mensagens/transcrições apenas para complementar, corrigir apelidos ou entender uma fala que ainda não virou venda estruturada. Para cada venda, reduza falas longas ao essencial: cliente, quantidade, pagamento e produto somente quando necessário. Não faça perguntas de atendimento. Se uma fala disser algo como "Marcelo estava fechado, deixei dois no freezer, foi Pix", registre somente Marcelo — 2 — PIX. Gere um relatório curto em formato de bloco de notas, em ordem cronológica, com totais quando os dados permitirem. Não invente nada e não conte a mesma venda duas vezes.');
   const contexto={
     data:String(historico.data||data||''),
-    faixa:faixa||null,
+    faixa:historico.faixa||faixa||null,
     pessoas:Array.isArray(historico.pessoas)?historico.pessoas:[],
-    mensagens,
-    vendas,
-    mensagens_historico:mensagens.length
+    vendas_estruturadas:vendas,
+    mensagens_transcritas:mensagens,
+    mensagens_historico:mensagens.length,
+    regras:[
+      'Priorize vendas_estruturadas.',
+      'Não duplique venda que já aparece em vendas_estruturadas.',
+      'Mensagens longas devem virar somente cliente + quantidade + pagamento + produto quando necessário.',
+      'Apelidos diferentes podem representar o mesmo cliente; preserve o nome cadastrado quando ele já estiver identificado.',
+      'Não faça perguntas de atendimento ao analisar histórico.'
+    ]
   };
   const resultado=await ask({message:mensagem,contexto});
   return {...resultado,historico:{...historico,mensagens,vendas,mensagens_historico:mensagens.length,faixa}};
