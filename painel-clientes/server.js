@@ -12,6 +12,7 @@ function panelBasicAuth(req,res,next){
   const publicPath =
     req.path.startsWith("/api/gelo/") ||
     req.path.startsWith("/api/webhooks/") ||
+    req.path.startsWith("/api/agent/") ||
     req.path === "/api/health";
   if(publicPath)return next();
 
