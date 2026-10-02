@@ -705,16 +705,35 @@ function helperJidsByName(nome) {
   if (["maira","maíra","flavio","flávio"].includes(n) && HELPER_MAIRA_JID) out.push(HELPER_MAIRA_JID);
   return [...new Set(out)];
 }
+function dateFromTimestamp(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "number") {
+    const d = new Date(value < 1e12 ? value * 1000 : value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(value).trim();
+  if (/^\d{10}$/.test(s)) {
+    const d = new Date(Number(s) * 1000);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (/^\d{13}$/.test(s)) {
+    const d = new Date(Number(s));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 function localDate(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = dateFromTimestamp(iso);
+  if (!d) return "";
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Sao_Paulo", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(d);
   const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return `${v.year}-${v.month}-${v.day}`;
 }
 function localTime(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = dateFromTimestamp(iso);
+  if (!d) return "";
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone:"America/Sao_Paulo", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false }).formatToParts(d);
   const v = Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return `${v.hour}:${v.minute}:${v.second}`;
