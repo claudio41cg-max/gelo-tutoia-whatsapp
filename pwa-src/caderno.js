@@ -6,6 +6,47 @@
   const clone=v=>JSON.parse(JSON.stringify(v));
   function ler(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return[]}}
   function salvar(v){localStorage.setItem(KEY,JSON.stringify(v))}
+  const HIST_KEY_LOCAL='gelo_tutoia_historico_dias';
+  function excluirDataDosHistoricos(data){
+    const alvo=String(data||'').trim();
+    if(!alvo)return {caderno:0,historico:0};
+    let caderno=0,historico=0;
+    const livro=ler();
+    const novoLivro=livro.filter(x=>String(x?.data||'')!==alvo);
+    caderno=livro.length-novoLivro.length;
+    if(caderno)salvar(novoLivro);
+    try{
+      const raw=localStorage.getItem(HIST_KEY_LOCAL);
+      const dias=raw?JSON.parse(raw):[];
+      if(Array.isArray(dias)){
+        const novos=dias.filter(x=>String(x?.data||'')!==alvo);
+        historico=dias.length-novos.length;
+        if(historico)localStorage.setItem(HIST_KEY_LOCAL,JSON.stringify(novos));
+      }
+    }catch(e){}
+    return {caderno,historico};
+  }
+  window.apagarDiaVendas=function(data,retorno='caderno'){
+    const alvo=String(data||'').trim();
+    if(!alvo)return;
+    if(typeof dataSimples==='function'&&alvo===dataSimples()){
+      return toast('⚠ Para apagar o dia de hoje, use REINICIAR TUDO');
+    }
+    const d=ler().find(x=>String(x?.data||'')===alvo);
+    const sacos=Number(d?.sacos)||0,valor=Number(d?.valor)||0;
+    const detalhe=d?(' Serão removidos '+sacos+' sacos · '+dinheiro(valor)+'.'):'';
+    confirmar(
+      'Apagar este dia?',
+      'O dia '+alvo+' será removido do Caderno de Vendas e do Histórico do Dia.'+detalhe,
+      'Sim, apagar',
+      ()=>{
+        const r=excluirDataDosHistoricos(alvo);
+        toast((r.caderno||r.historico)?'🗑 Dia '+alvo+' apagado':'Esse dia já não estava salvo');
+        if(retorno==='historico'&&typeof telaHistorico==='function')telaHistorico();
+        else telaCadernoVendas();
+      }
+    );
+  };
   function totais(vpc){
     const t={esc:0,filt:0,din:0,pix:0,fiado:0,revisar:0,valor:0,sacos:0};
     Object.values(vpc||{}).forEach(vs=>(vs||[]).forEach(v=>{
@@ -56,6 +97,7 @@
       h+='<div class="gt-cad-card"><div class="gt-cad-name">'+esc(nome)+' <span>'+dinheiro(total)+'</span></div>'+vs.map(v=>'<div class="gt-cad-line">'+esc(resumo(v))+'</div>').join('')+'</div>';
     });
     h+='<div class="gt-cad-total"><b>Total do dia: '+dinheiro(d.valor||0)+'</b><br>Escamas: '+(d.esc||0)+' · Filtrado: '+(d.filt||0)+' · Sacos: '+(d.sacos||0)+'<br>Despesas: '+dinheiro(d.desp||0)+'</div>';
+    h+='<button class="act-btn btn-reset gt-cad-delete-day" onclick="apagarDiaVendas(\''+esc(data)+'\',\'caderno\')">🗑 APAGAR ESTE DIA</button>';
     h+='<button class="act-btn btn-back" onclick="telaCadernoVendas()">‹ Voltar</button>';abrirSub(h);
   };
   window.telaCadernoClientes=function(){
@@ -78,7 +120,7 @@
     h+='<div class="gt-cad-total"><b>Total registrado: '+sacos+' sacos · '+dinheiro(total)+'</b></div><button class="act-btn btn-back" onclick="telaCadernoClientes()">‹ Voltar</button>';abrirSub(h);
   };
   const style=document.createElement('style');
-  style.textContent='.gt-cad-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 14px}.gt-cad-tabs button{border:1px solid #ffffff28;border-radius:12px;padding:12px;background:#123b5a;color:#fff;font-weight:900}.gt-cad-day{display:flex;width:calc(100% - 28px);margin:9px 14px;padding:15px;flex-direction:column;gap:4px;text-align:left;border:1px solid #ffffff24;border-radius:16px;background:#0d3450;color:#fff}.gt-cad-day b{font-size:20px;color:#ffd54f}.gt-cad-day span{font-size:16px;font-weight:800}.gt-cad-day small{color:#c9dbe8}.gt-cad-card{margin:10px 14px;padding:13px;border-radius:15px;background:#0c2c45;border:1px solid #ffffff20}.gt-cad-name{display:flex;justify-content:space-between;gap:8px;font-size:19px;font-weight:900;color:#ffd54f}.gt-cad-name span{color:#36e27f}.gt-cad-line{padding-top:7px;color:#e3edf4}.gt-cad-total{margin:12px 14px;padding:15px;border-radius:15px;background:#103b2b;color:#eafff2;line-height:1.6}';
+  style.textContent='.gt-cad-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 14px}.gt-cad-tabs button{border:1px solid #ffffff28;border-radius:12px;padding:12px;background:#123b5a;color:#fff;font-weight:900}.gt-cad-day{display:flex;width:calc(100% - 28px);margin:9px 14px;padding:15px;flex-direction:column;gap:4px;text-align:left;border:1px solid #ffffff24;border-radius:16px;background:#0d3450;color:#fff}.gt-cad-day b{font-size:20px;color:#ffd54f}.gt-cad-day span{font-size:16px;font-weight:800}.gt-cad-day small{color:#c9dbe8}.gt-cad-card{margin:10px 14px;padding:13px;border-radius:15px;background:#0c2c45;border:1px solid #ffffff20}.gt-cad-name{display:flex;justify-content:space-between;gap:8px;font-size:19px;font-weight:900;color:#ffd54f}.gt-cad-name span{color:#36e27f}.gt-cad-line{padding-top:7px;color:#e3edf4}.gt-cad-total{margin:12px 14px;padding:15px;border-radius:15px;background:#103b2b;color:#eafff2;line-height:1.6}.gt-cad-delete-day{margin:12px 14px!important;width:calc(100% - 28px)!important;background:linear-gradient(135deg,#8f1f1f,#651414)!important;color:#fff!important;border-color:#d65b5b!important}';
   document.head.appendChild(style);
   function adicionarInicio(){
     try{
