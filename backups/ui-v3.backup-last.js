@@ -75,40 +75,67 @@
   `;document.head.appendChild(st);
 
   window.toggleHistoricoDia=function(i){
-    const el=document.getElementById('gt-hist-dia-'+i);
+    const el=document.getElementById('dia-'+i);
     if(el)el.style.display=el.style.display==='none'?'block':'none';
   };
 
   window.telaHistorico=function(){
     if(typeof salvarDiaNoHistorico==='function')salvarDiaNoHistorico();
     const ds=dias();
-    let h='<div class="pg-hdr"><div class="pg-title">HISTÓRICO</div><div class="pg-sub">Registros por dia</div></div>';
+    let h=`<div class="pg-hdr"><div class="pg-title">HISTÓRICO</div><div class="pg-sub">Registros por dia</div></div>`;
+
     if(!ds.length){
-      h+='<div class="conf-card"><div style="color:var(--muted);font-size:15px;text-align:center;padding:24px 0">Nenhum histórico salvo ainda.</div></div>';
+      h+=`<div class="conf-card"><div style="color:var(--muted);font-size:15px;text-align:center;padding:24px 0">Nenhum histórico salvo ainda.</div></div>`;
     }else{
-      ds.forEach((d,i)=>{
-        const x=zerado();
-        Object.values(d.vpc||{}).forEach(vs=>soma(x,somaVendas(vs)));
-        const bruto=(Number(d.din)||0)+(Number(d.pix)||0)+(Number(d.fiad)||0);
-        const liq=bruto-(Number(d.desp)||0);
-        h+='<div class="gt-hist-day-card">';
-        h+='<div class="gt-hist-day-head" onclick="toggleHistoricoDia('+i+')"><div><b>'+esc(d.data)+'</b><span>'+x.sacos+' sacos · '+dinheiro(liq)+'</span></div><button class="gt-hist-trash" type="button" onclick="event.stopPropagation();apagarDiaVendas(\''+esc(d.data)+'\',\'historico\')">🗑</button></div>';
-        h+='<div id="gt-hist-dia-'+i+'" class="gt-hist-day-detail" style="display:none">';
-        h+='<div class="gt-hist-money">Dinheiro '+dinheiro(d.din||0)+' · PIX '+dinheiro(d.pix||0)+' · Fiado '+dinheiro(d.fiad||0)+' · Despesas '+dinheiro(d.desp||0)+'</div>';
-        Object.keys(d.vpc||{}).forEach(nome=>{
-          const vs=(d.vpc[nome]||[]).filter(v=>v.tipo!=='obs');
-          if(!vs.length)return;
-          const q=vs.reduce((a,v)=>a+(Number(v.qtd)||0),0);
-          const val=vs.reduce((a,v)=>a+(Number(v.valor)||0),0);
-          const parts=vs.map(v=>(Number(v.qtd)||0)+'× '+(v.tipo==='esc'?'Escamas':(v.pesoKg===5?'Filtrado 5 kg':'Filtrado 10 kg'))).join(' · ');
-          h+='<div class="gt-hist-client"><b>'+esc(nome)+'</b><span>'+q+' sacos · '+dinheiro(val)+'</span><small>'+esc(parts)+'</small></div>';
-        });
-        h+='<button class="act-btn btn-reset gt-hist-delete" onclick="apagarDiaVendas(\''+esc(d.data)+'\',\'historico\')">🗑 APAGAR ESTE DIA</button>';
-        h+='</div></div>';
+      ds.forEach((dia,di)=>{
+        const bruto=(Number(dia.din)||0)+(Number(dia.pix)||0)+(Number(dia.fiad)||0);
+        const liq=bruto-(Number(dia.desp)||0);
+        const totalSacos=(Number(dia.esc)||0)+(Number(dia.filt)||0);
+
+        h+=`<div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;margin:6px 14px;overflow:hidden;">`;
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(0,0,0,.2);cursor:pointer" onclick="toggleHistoricoDia(${di})">
+          <span style="font-weight:800;font-size:15px;color:var(--gold)">${esc(dia.data)}</span>
+          <span style="font-size:13px;color:var(--green2);font-weight:700">${totalSacos} sacos · ${dinheiro(liq)}</span>
+        </div>`;
+
+        h+=`<div id="dia-${di}" style="display:none;padding:0 14px 10px">`;
+        h+=`<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap">
+          <span style="color:var(--green2)">💵 ${dinheiro(dia.din||0)}</span>
+          <span style="color:var(--cyan)">📱 ${dinheiro(dia.pix||0)}</span>
+          <span style="color:var(--gold)">💳 ${dinheiro(dia.fiad||0)}</span>
+          <span style="color:#f87171">−${dinheiro(dia.desp||0)}</span>
+          <span style="color:var(--green2);font-weight:800">= ${dinheiro(liq)}</span>
+        </div>`;
+
+        if(dia.vpc){
+          Object.keys(dia.vpc).forEach(nome=>{
+            const vs=dia.vpc[nome]||[];
+            if(!vs.length)return;
+            const validas=vs.filter(v=>v&&v.tipo!=='obs');
+            if(!validas.length)return;
+            const resumo=validas.map(v=>{
+              const t=v.tipo==='esc'?'E':v.tipo==='filt'?'F':'?';
+              const p=v.pag==='PIX'?'P':v.pag==='Fiado'?'F':'D';
+              return (Number(v.qtd)||0)+'×'+t+'('+p+')';
+            }).join(' ');
+            const total=validas.reduce((a,v)=>a+(Number(v.valor)||0),0);
+            h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px">
+              <span style="color:var(--white);font-weight:700">${esc(nome)}</span>
+              <span style="display:flex;gap:8px;align-items:center">
+                <span style="color:var(--muted);font-size:11px">${esc(resumo)}</span>
+                <span style="color:var(--gold);font-weight:800">${dinheiro(total)}</span>
+              </span>
+            </div>`;
+          });
+        }
+
+        h+=`<button class="act-btn btn-reset gt-hist-delete" onclick="apagarDiaVendas('${esc(dia.data)}','historico')">🗑 APAGAR ESTE DIA</button>`;
+        h+=`</div></div>`;
       });
     }
-    h+='<button class="btn-reset act-btn" style="margin-top:10px;color:#f87171;border-color:rgba(248,113,113,.3)" onclick="apagarHistorico()">🗑 Apagar todo o histórico</button>';
-    h+='<button class="act-btn btn-back" style="margin-top:4px" onclick="fecharSub(false)">‹ Voltar</button>';
+
+    h+=`<button class="btn-reset act-btn" style="margin-top:10px;color:#f87171;border-color:rgba(248,113,113,.3)" onclick="apagarHistorico()">🗑 Apagar todo o histórico</button>`;
+    h+=`<button class="act-btn btn-back" style="margin-top:4px" onclick="fecharSub(false)">‹ Voltar</button>`;
     abrirSub(h);
   };
 
