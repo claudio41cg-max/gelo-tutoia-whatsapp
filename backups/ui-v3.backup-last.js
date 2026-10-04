@@ -32,6 +32,9 @@
     .gt-client-actions .tipo-btn{padding:18px 20px!important;margin:7px 14px!important;border-radius:18px!important;min-height:0!important}
     .gt-client-actions .tipo-btn .tn{font-size:28px!important;line-height:1.12}
     .gt-client-actions .tipo-btn .tp{font-size:15px!important}
+    .gt-filter-choice .tipo-btn{padding:18px 20px!important;margin:7px 14px!important;border-radius:18px!important;min-height:0!important}
+    .gt-filter-choice .tipo-btn .tn{font-size:28px!important;line-height:1.12}
+    .gt-filter-choice .tipo-btn .tp{font-size:15px!important}
     .gt-corrigir{background:linear-gradient(135deg,#c0392b,#922b21)!important;border-color:#ff6655!important}
     .gt-corrigir .tn{font-size:22px!important}
     .q-fiado{background:linear-gradient(145deg,#e23b35,#9c1717)!important}
@@ -143,11 +146,11 @@
     const p=produtos();
     if(excecoes.has(norm(nome))){window.gtPesoCur=10;telaQtd(nome,'filt',P_FILT[nome]);return}
     const u10=p.usa10?.[nome]!==false,u5=true,p5=Number(p.preco5?.[nome])||0;
-    let h=`<div class="pg-hdr"><div class="pg-title">${esc(nome)}</div><div class="pg-sub">ESCOLHA O FILTRADO</div></div>`;
+    let h=`<div class="gt-filter-choice"><div class="pg-hdr"><div class="pg-title">${esc(nome)}</div><div class="pg-sub">ESCOLHA O FILTRADO</div></div>`;
     if(u10)h+=`<button class="tipo-btn tp-filt" onclick="telaQtdPeso('${esc(nome)}',10,${Number(P_FILT[nome])||0})"><span class="tn">💎 FILTRADO 10 KG</span><span class="tp">${dinheiro(P_FILT[nome])}/saco</span></button>`;
     if(u5)h+=`<button class="tipo-btn tp-filt" onclick="telaQtdPeso('${esc(nome)}',5,${p5})"><span class="tn">💎 FILTRADO 5 KG</span><span class="tp">${p5>0?dinheiro(p5)+'/saco':'Configure o preço'}</span></button>`;
     if(!u10&&!u5)h+='<div class="conf-card">Nenhum tamanho de filtrado está ativado para este cliente.</div>';
-    h+=`<button class="act-btn btn-back" onclick="telaVenda('${esc(nome)}')">‹ Voltar</button>`;abrirSub(h)
+    h+=`<button class="act-btn btn-back" onclick="telaVenda('${esc(nome)}')">‹ Voltar</button></div>`;abrirSub(h)
   };
   window.telaQtdPeso=function(nome,pesoKg,preco){if(!(Number(preco)>0))return toast('⚠ Configure o preço deste produto');window.gtPesoCur=pesoKg;nomeCur=nome;tipoCur='filt';precoCur=Number(preco);S.qtd=1;renderQtd()};
 
@@ -159,8 +162,8 @@
       ${fone?`<div style="text-align:center;margin:6px 14px 0;padding:10px 14px;background:rgba(0,0,0,.2);border-radius:10px;font-size:20px;color:#22ff99;font-weight:800">📞 ${foneFmt}</div>`:''}
       ${resumo?`<div class="vendas-hoje">Hoje: ${resumo}</div>`:''}
       ${t!=='filtrado'?`<button class="tipo-btn tp-esc" onclick="window.gtPesoCur=20;telaQtd('${esc(nome)}','esc',${Number(P_ESC[nome])||0})"><span class="tn">❄ ESCAMAS</span><span class="tp">${dinheiro(P_ESC[nome])}/saco</span></button>`:''}
-      ${t!=='escamas'?`<button class="tipo-btn tp-filt" onclick="abrirEscolhaFiltrado('${esc(nome)}')"><span class="tn">💎 FILTRADO</span><span class="tp">${excecoes.has(norm(nome))?dinheiro(P_FILT[nome])+'/saco':'Escolher tamanho'}</span></button>`:''}
-      <button class="tipo-btn tp-obs gt-corrigir" onclick="telaCorrecoesHoje('${esc(nome)}')"><span class="tn">✏️ CORRIGIR VENDA</span></button>
+      ${t!=='escamas'?`<button class="tipo-btn tp-filt" onclick="${t==='filtrado'?`telaQtdPeso('${esc(nome)}',10,${Number(P_FILT[nome])||0})`:`abrirEscolhaFiltrado('${esc(nome)}')`}"><span class="tn">💎 FILTRADO</span><span class="tp">${t==='filtrado'?dinheiro(P_FILT[nome])+'/saco · 10 kg':(excecoes.has(norm(nome))?dinheiro(P_FILT[nome])+'/saco':'Escolher tamanho')}</span></button>`:''}
+      <button class="tipo-btn tp-obs gt-corrigir" onclick="telaCorrecoesHoje('${esc(nome)}')"><span class="tn">🗑 EXCLUIR VENDA</span></button>
       <button class="act-btn gt-historico-btn" onclick="telaHistoricoCliente('${esc(nome)}')">📊 HISTÓRICO</button>
       <button class="act-btn btn-back" onclick="fecharSub(true)">‹ Voltar</button></div>`)
   };
@@ -168,9 +171,9 @@
   window.telaCorrecoesHoje=function(nome){
     if(typeof salvarDiaNoHistorico==='function')salvarDiaNoHistorico();
     const ds=dias(),d=ds.find(x=>x.data===dataSimples()),vs=d?.vpc?.[nome]||[];
-    let h=`<div class="pg-hdr"><div class="pg-title">CORRIGIR VENDA</div><div class="pg-sub">${esc(nome)} · hoje</div></div>`;
-    if(!vs.length)h+='<div class="conf-card">Não há vendas deste cliente hoje.</div>';
-    vs.forEach((v,i)=>{if(v.tipo!=='obs')h+=`<div class="gt-sale-row"><b>${produto(v)}</b> · ${v.qtd} saco(s) · ${v.pag} · ${dinheiro(v.valor)}<button class="act-btn btn-rel" style="margin:7px 0 0" onclick="editarVendaCliente('${esc(nome)}','${d.data}',${i})">✏️ Corrigir / excluir</button></div>`});
+    let h=`<div class="pg-hdr"><div class="pg-title">EXCLUIR VENDA</div><div class="pg-sub">${esc(nome)} · hoje</div></div>`;
+    if(!vs.some(v=>v&&v.tipo!=='obs'))h+='<div class="conf-card">Não há vendas deste cliente hoje.</div>';
+    vs.forEach((v,i)=>{if(v&&v.tipo!=='obs')h+=`<div class="gt-sale-row"><b>${produto(v)}</b> · ${v.qtd} saco(s) · ${v.pag} · ${dinheiro(v.valor)}<button class="act-btn btn-reset" style="margin:7px 0 0;background:linear-gradient(135deg,#b52121,#7f1111);color:#fff" onclick="excluirVendaCliente('${esc(nome)}','${d.data}',${i})">🗑 Excluir esta venda</button></div>`});
     h+=`<button class="act-btn btn-back" onclick="telaVenda('${esc(nome)}')">‹ Voltar</button>`;abrirSub(h)
   };
 
