@@ -61,7 +61,56 @@
     .gt-week-total{color:#36e27f;font-weight:1000}
     .gt-day-value{color:#36e27f;font-weight:800}
     .gt-day-qty,.gt-day-money{color:#36e27f;font-weight:800}
+    .gt-hist-day-card{margin:10px 14px;border-radius:16px;background:#0d2238;border:1px solid #ffffff20;overflow:hidden}
+    .gt-hist-day-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer}
+    .gt-hist-day-head>div{display:flex;align-items:center;justify-content:space-between;gap:18px;flex:1}
+    .gt-hist-day-head b{font-size:20px;color:#ffd54f}
+    .gt-hist-day-head span{font-size:16px;color:#36e27f;font-weight:900}
+    .gt-hist-trash{border:1px solid #b95757;background:#5a1717;color:#fff;border-radius:10px;padding:8px 10px;font-size:18px}
+    .gt-hist-day-detail{padding:0 14px 14px;border-top:1px solid #ffffff12}
+    .gt-hist-money{padding:10px 0;color:#c9dbe8;font-size:12px}
+    .gt-hist-client{display:grid;grid-template-columns:1fr auto;gap:3px 10px;padding:8px 0;border-top:1px solid #ffffff0f}
+    .gt-hist-client b{color:#fff}.gt-hist-client span{color:#36e27f;font-weight:800}.gt-hist-client small{grid-column:1/-1;color:#9fb3c4}
+    .gt-hist-delete{margin:12px 0 0!important;width:100%!important;background:linear-gradient(135deg,#8f1f1f,#651414)!important;color:#fff!important}
   `;document.head.appendChild(st);
+
+  window.toggleHistoricoDia=function(i){
+    const el=document.getElementById('gt-hist-dia-'+i);
+    if(el)el.style.display=el.style.display==='none'?'block':'none';
+  };
+
+  window.telaHistorico=function(){
+    if(typeof salvarDiaNoHistorico==='function')salvarDiaNoHistorico();
+    const ds=dias();
+    let h='<div class="pg-hdr"><div class="pg-title">HISTÓRICO</div><div class="pg-sub">Registros por dia</div></div>';
+    if(!ds.length){
+      h+='<div class="conf-card"><div style="color:var(--muted);font-size:15px;text-align:center;padding:24px 0">Nenhum histórico salvo ainda.</div></div>';
+    }else{
+      ds.forEach((d,i)=>{
+        const x=zerado();
+        Object.values(d.vpc||{}).forEach(vs=>soma(x,somaVendas(vs)));
+        const bruto=(Number(d.din)||0)+(Number(d.pix)||0)+(Number(d.fiad)||0);
+        const liq=bruto-(Number(d.desp)||0);
+        h+='<div class="gt-hist-day-card">';
+        h+='<div class="gt-hist-day-head" onclick="toggleHistoricoDia('+i+')"><div><b>'+esc(d.data)+'</b><span>'+x.sacos+' sacos · '+dinheiro(liq)+'</span></div><button class="gt-hist-trash" type="button" onclick="event.stopPropagation();apagarDiaVendas(\''+esc(d.data)+'\',\'historico\')">🗑</button></div>';
+        h+='<div id="gt-hist-dia-'+i+'" class="gt-hist-day-detail" style="display:none">';
+        h+='<div class="gt-hist-money">Dinheiro '+dinheiro(d.din||0)+' · PIX '+dinheiro(d.pix||0)+' · Fiado '+dinheiro(d.fiad||0)+' · Despesas '+dinheiro(d.desp||0)+'</div>';
+        Object.keys(d.vpc||{}).forEach(nome=>{
+          const vs=(d.vpc[nome]||[]).filter(v=>v.tipo!=='obs');
+          if(!vs.length)return;
+          const q=vs.reduce((a,v)=>a+(Number(v.qtd)||0),0);
+          const val=vs.reduce((a,v)=>a+(Number(v.valor)||0),0);
+          const parts=vs.map(v=>(Number(v.qtd)||0)+'× '+(v.tipo==='esc'?'Escamas':(v.pesoKg===5?'Filtrado 5 kg':'Filtrado 10 kg'))).join(' · ');
+          h+='<div class="gt-hist-client"><b>'+esc(nome)+'</b><span>'+q+' sacos · '+dinheiro(val)+'</span><small>'+esc(parts)+'</small></div>';
+        });
+        h+='<button class="act-btn btn-reset gt-hist-delete" onclick="apagarDiaVendas(\''+esc(d.data)+'\',\'historico\')">🗑 APAGAR ESTE DIA</button>';
+        h+='</div></div>';
+      });
+    }
+    h+='<button class="btn-reset act-btn" style="margin-top:10px;color:#f87171;border-color:rgba(248,113,113,.3)" onclick="apagarHistorico()">🗑 Apagar todo o histórico</button>';
+    h+='<button class="act-btn btn-back" style="margin-top:4px" onclick="fecharSub(false)">‹ Voltar</button>';
+    abrirSub(h);
+  };
 
   window.abrirEscolhaFiltrado=function(nome){
     const p=produtos();
