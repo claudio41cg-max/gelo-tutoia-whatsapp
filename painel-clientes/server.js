@@ -269,10 +269,24 @@ function normalizeQueueTimestamp(v){
   if(/^\d{13}$/.test(s))return Number(s);
   const t=Date.parse(s);return Number.isFinite(t)?t:Date.now();
 }
+function saleSenderAuthorized(item={}){
+  const raw=String(item.remetente||item.sender||"").trim();
+  if(!raw) return true; // preserva lançamentos manuais/locais sem remetente
+  const phone=raw.replace(/@.*/,"").replace(/\D/g,"");
+  const jid=raw;
+  if(phone && authorizedHistoryPhones().has(phone)) return true;
+  if(authorizedHistoryJids().has(jid)) return true;
+  const name=String(item.nome_remetente||item.sender_name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  return /\b(flavio|maira|luciano|tafa|tafarel|claudio|dinho)\b/.test(name);
+}
 function upsertPendingSale(item={}){
   if(!salesDb)throw new Error("Fila SQLite indisponível");
   const remoteId=String(item.remote_id||"").trim();
   if(!remoteId)return "invalid";
+  if(!saleSenderAuthorized(item)){
+    console.log("SALES_QUEUE_REJECT_UNAUTHORIZED",JSON.stringify({remote_id:remoteId,remetente:String(item.remetente||item.sender||""),nome:String(item.nome_remetente||item.sender_name||"")}));
+    return "unauthorized";
+  }
   const messageId=String(item.message_id||item.remote_key||remoteId).replace(/^mensagem:/,"").trim();
   const now=Date.now();
   const receivedMs=normalizeQueueTimestamp(item.recebido_em||item.timestamp_ms||item.timestamp);
@@ -331,7 +345,8 @@ function listSalesByLocalDateRange(targetDate,inicio="00:00:00",fim="23:59:59"){
   return rows.filter(r=>{
     const iso=r.received_at||new Date(Number(r.received_ms)||0).toISOString();
     const d=localDate(iso),h=localTime(iso);
-    return d===targetDate && !!h && h>=inicio && h<=fim;
+    const mapped=mapSaleRow(r);
+    return d===targetDate && !!h && h>=inicio && h<=fim && saleSenderAuthorized(mapped);
   }).map(mapSaleRow);
 }
 function logRecentSalesForAgent(days=2){
