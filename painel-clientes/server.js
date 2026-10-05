@@ -7,6 +7,15 @@ const { interpretarVendas } = require("./sales-parser.js");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
+
+app.use("/api/gelo",(req,res,next)=>{
+  res.set("Access-Control-Allow-Origin","*");
+  res.set("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  res.set("Access-Control-Allow-Headers","Content-Type");
+  res.set("Cache-Control","no-store");
+  if(req.method==="OPTIONS")return res.sendStatus(204);
+  next();
+});
 app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 
 const PANEL_SESSION_COOKIE="gelo_panel_session";
