@@ -1805,6 +1805,33 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     /@s\.whatsapp\.net$/i.test(senderAltJid) ? senderAltJid :
     senderPhone;
 
+  // Preserva primeiro a mensagem bruta de qualquer ajudante autorizado.
+  // A interpretação da venda acontece depois e nunca substitui este histórico.
+  const rawAuthorizedEntry={
+    message_id:String(info?.ID || info?.Id || info?.id || ""),
+    timestamp:String(info?.Timestamp || new Date().toISOString()),
+    pessoa:String(info?.PushName || c.businessName || c.name || "Remetente"),
+    sender_jid:senderJid,
+    sender_alt:senderAltJid,
+    chat_jid:chatJid,
+    tipo:String(info?.Type || ""),
+    texto:String(text || ""),
+    transcricao:String(text || ""),
+    is_from_me:info?.IsFromMe === true,
+    is_group:info?.IsGroup === true,
+    origem:"wuzapi-client-raw"
+  };
+  if(isAuthorizedHistoryEntry({...rawAuthorizedEntry,is_from_me:false})){
+    appendWuzapiHistory({...rawAuthorizedEntry,is_from_me:false});
+    console.log("AUTHORIZED_RAW_MESSAGE_SAVED",JSON.stringify({
+      message_id:rawAuthorizedEntry.message_id,
+      timestamp:rawAuthorizedEntry.timestamp,
+      sender:rawAuthorizedEntry.sender_alt||rawAuthorizedEntry.sender_jid,
+      tipo:rawAuthorizedEntry.tipo,
+      tem_texto:!!rawAuthorizedEntry.texto
+    }));
+  }
+
   // Se uma instância interna/autorizada estiver enviando uma venda, encaminha ao Worker
   // usando o número real do remetente. Isso cobre eventos em que o destino chega apenas como LID
   // e o WuzAPI não fornece RecipientAlt.
