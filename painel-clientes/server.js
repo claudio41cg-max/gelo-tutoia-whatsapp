@@ -112,6 +112,15 @@ app.post("/api/gelo/queue/upsert", (req, res) => {
       if(r==="inserted") inserted++;
       else if(r==="existing") existing++;
     }
+    for(const item of items){
+      console.log("SALES_UPSERT_ROW",JSON.stringify({
+        remote_id:String(item?.remote_id||""),remote_key:String(item?.remote_key||""),
+        message_id:String(item?.message_id||""),recebido_em:String(item?.recebido_em||item?.timestamp||""),
+        cliente:String(item?.cliente||item?.client||""),qtd:Number(item?.qtd||item?.qty||0),
+        tipo:String(item?.tipo||item?.product_type||""),pagamento:String(item?.pagamento||item?.payment||"Não informado"),
+        transcricao:String(item?.transcricao||item?.transcription||""),remetente:String(item?.remetente||item?.sender||"")
+      }));
+    }
     return res.json({ok:true,inserted,existing,total:items.length});
   }catch(e){
     console.error("Falha ao gravar fila de vendas:",e?.message||e);
@@ -210,6 +219,7 @@ if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, J
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 initSalesQueue();
+logRecentSalesForAgent(2);
 
 function atomicWriteFile(filePath, content){
   const tmp=filePath+".tmp-"+process.pid+"-"+Date.now();
@@ -303,6 +313,36 @@ function listPendingSales(){
     pagamento:r.payment||"Não informado",confianca:r.confidence||"",
     remetente:r.sender||"",nome_remetente:r.sender_name||"",status:r.status
   }));
+}
+function mapSaleRow(r){
+  return {
+    remote_id:r.remote_id,remote_key:r.remote_key,message_id:r.message_id,
+    recebido_em:r.received_at||new Date(Number(r.received_ms)||Date.now()).toISOString(),
+    timestamp_ms:Number(r.received_ms)||0,transcricao:r.transcription||"",
+    cliente:r.client||"",qtd:Number(r.qty)||0,tipo:r.product_type||"",
+    pagamento:r.payment||"Não informado",confianca:r.confidence||"",
+    remetente:r.sender||"",nome_remetente:r.sender_name||"",status:r.status,
+    launched_ms:Number(r.launched_ms)||0,deleted_ms:Number(r.deleted_ms)||0,archived_ms:Number(r.archived_ms)||0
+  };
+}
+function listSalesByLocalDateRange(targetDate,inicio="00:00:00",fim="23:59:59"){
+  if(!salesDb)return[];
+  const rows=salesDb.prepare("SELECT * FROM sales_queue ORDER BY received_ms ASC").all();
+  return rows.filter(r=>{
+    const iso=r.received_at||new Date(Number(r.received_ms)||0).toISOString();
+    const d=localDate(iso),h=localTime(iso);
+    return d===targetDate && !!h && h>=inicio && h<=fim;
+  }).map(mapSaleRow);
+}
+function logRecentSalesForAgent(days=2){
+  if(!salesDb)return;
+  const cutoff=Date.now()-Math.max(1,Number(days)||2)*86400000;
+  const rows=salesDb.prepare("SELECT * FROM sales_queue WHERE received_ms>=? ORDER BY received_ms ASC").all(cutoff);
+  for(const row of rows){
+    const v=mapSaleRow(row);
+    console.log("SALES_HISTORY_ROW",JSON.stringify(v));
+  }
+  console.log("SALES_HISTORY_READY",JSON.stringify({rows:rows.length,days}));
 }
 function setSaleStatus(remoteId,status){
   if(!salesDb)return 0;
@@ -491,7 +531,17 @@ async function downloadWuzAudioBase64(token, audio) {
   });
   let p=out?.data??out?.Data??out;
   if(typeof p==="string"){ try{ p=JSON.parse(p); }catch{} }
-  return String(p?.Data??p?.data??"").replace(/^data:[^;]+;base64,/i,"");
+  const raw=String(p?.Data??p?.data??"").trim();
+  // WuzAPI returns a Data URL. Audio MIME can contain parameters such as
+  // "audio/ogg; codecs=opus", so the prefix is not always "mime;base64,".
+  const comma=raw.indexOf(",");
+  const candidate=/^data:/i.test(raw) && comma>=0 ? raw.slice(comma+1) : raw;
+  const clean=candidate.replace(/\s+/g,"");
+  if(!clean || !/^[A-Za-z0-9+/]*={0,2}$/.test(clean) || clean.length%4!==0){
+    console.error("WuzAPI retornou áudio em formato base64 inválido", {prefix:raw.slice(0,80),length:raw.length});
+    return "";
+  }
+  return clean;
 }
 async function processAuthorizedHistoricalAudio({token,messageId,timestamp,person,senderJid="",senderAlt="",chatJid="",audio}) {
   const id=String(messageId||"").trim();
@@ -1132,23 +1182,27 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     ]);
     const personById = new Map(historico.map(m=>[m.message_id,m.pessoa]).filter(x=>x[0]));
 
-    let inbox = [];
-    try {
-      const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
-      const inboxData = await inboxResp.json().catch(()=>({}));
-      inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
-    } catch (e) {
-      console.error("Falha ao cruzar inbox no histórico diário:", e?.message || e);
+    // A fonte principal do histórico agora é o SQLite persistente do Railway.
+    // Ele preserva também vendas já lançadas, arquivadas ou excluídas.
+    let inbox = listSalesByLocalDateRange(targetDate,inicio,fim);
+    if(!inbox.length){
+      try {
+        const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
+        const inboxData = await inboxResp.json().catch(()=>({}));
+        inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
+      } catch (e) {
+        console.error("Falha ao usar fallback da inbox no histórico diário:", e?.message || e);
+      }
     }
 
     const vendas = inbox.filter(v => {
-      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
+      const id = String(v?.message_id || v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       return localDate(v?.recebido_em) === targetDate &&
         dentroDaFaixa(v?.recebido_em) &&
-        (ids.has(id) || Object.values(phonesByName).includes(remetente));
+        (!ids.size || ids.has(id) || Object.values(phonesByName).includes(remetente));
     }).map(v => {
-      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
+      const id = String(v?.message_id || v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       const pessoa = personById.get(id) ||
         Object.entries(phonesByName).find(([,phone])=>phone===remetente)?.[0] || "";
@@ -1161,7 +1215,9 @@ app.get("/api/agent/historico-dia", async (req, res) => {
         tipo:v.tipo,
         pagamento:v.pagamento,
         confianca:v.confianca,
-        remote_key:v.remote_key
+        status:v.status||"",
+        remote_key:v.remote_key,
+        remote_id:v.remote_id||""
       };
     }).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
 
@@ -1186,6 +1242,21 @@ app.get("/api/agent/historico-dia", async (req, res) => {
   } catch (e) {
     console.error("Falha no histórico diário do agente:", e?.message || e);
     res.status(500).json({ error:String(e?.message || e) });
+  }
+});
+
+app.get("/api/agent/vendas-dia", (req,res)=>{
+  try{
+    if(!agentAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
+    const data=String(req.query?.data||"").trim();
+    const targetDate=/^\d{4}-\d{2}-\d{2}$/.test(data)?data:new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const norm=(v,fallback)=>{const m=String(v||"").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);if(!m)return fallback;return String(Math.min(23,+m[1])).padStart(2,"0")+":"+String(Math.min(59,+m[2])).padStart(2,"0")+":"+String(Math.min(59,+(m[3]||0))).padStart(2,"0")};
+    const inicio=norm(req.query?.inicio,"00:00:00"),fim=norm(req.query?.fim,"23:59:59");
+    const vendas=listSalesByLocalDateRange(targetDate,inicio,fim);
+    return res.json({ok:true,data:targetDate,faixa:{inicio,fim},total:vendas.length,vendas});
+  }catch(e){
+    console.error("Falha ao consultar vendas do dia:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"});
   }
 });
 
