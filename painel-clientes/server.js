@@ -7,36 +7,139 @@ const { interpretarVendas } = require("./sales-parser.js");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
+app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 
-function panelBasicAuth(req,res,next){
+const PANEL_SESSION_COOKIE="gelo_panel_session";
+
+function panelCredentials(){
+  return {
+    user:String(process.env.PANEL_BASIC_USER||"").trim(),
+    pass:String(process.env.PANEL_BASIC_PASS||"")
+  };
+}
+
+function safeTextEqual(a,b){
+  const aa=Buffer.from(String(a));
+  const bb=Buffer.from(String(b));
+  return aa.length===bb.length && crypto.timingSafeEqual(aa,bb);
+}
+
+function parseCookies(header=""){
+  const out={};
+  for(const part of String(header).split(";")){
+    const i=part.indexOf("=");
+    if(i<0)continue;
+    const key=part.slice(0,i).trim();
+    const value=part.slice(i+1).trim();
+    try{out[key]=decodeURIComponent(value)}catch{out[key]=value}
+  }
+  return out;
+}
+
+function panelSessionToken(){
+  const {user,pass}=panelCredentials();
+  if(!user||!pass)return "";
+  return crypto
+    .createHmac("sha256",pass)
+    .update("gelo-painel-session:"+user)
+    .digest("hex");
+}
+
+function panelAuthorized(req){
+  const token=parseCookies(req.headers.cookie||"")[PANEL_SESSION_COOKIE]||"";
+  const expected=panelSessionToken();
+  return Boolean(expected)&&safeTextEqual(token,expected);
+}
+
+function panelSessionCookie(){
+  return PANEL_SESSION_COOKIE+"="+encodeURIComponent(panelSessionToken())+
+    "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000";
+}
+
+function panelLoginPage(message=""){
+  const note=message
+    ?'<div style="margin:0 0 14px;padding:11px 12px;border-radius:12px;background:#3a1c24;color:#ffb6c1;border:1px solid #69303d">'+message+'</div>'
+    :"";
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Entrar no Painel</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1117;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:20px}.card{width:min(100%,420px);background:#171c25;border:1px solid #2c3442;border-radius:24px;padding:28px;box-shadow:0 24px 70px #0008}h1{font-size:27px;margin:0 0 8px}p{margin:0 0 22px;color:#aeb8c8}.field{margin:14px 0}.field label{display:block;margin-bottom:7px;color:#d8deea}.field input{width:100%;padding:15px 16px;border-radius:14px;border:1px solid #39465b;background:#0d1420;color:#fff;font-size:17px;outline:none}.field input:focus{border-color:#3b9cff}button{width:100%;margin-top:10px;padding:15px;border:0;border-radius:14px;background:#2586d4;color:#fff;font-size:17px;font-weight:800}.small{font-size:12px;color:#7f8b9f;margin-top:16px;text-align:center}
+</style>
+</head>
+<body>
+<form class="card" method="post" action="/__panel/login" autocomplete="on">
+<h1>Entrar no Painel</h1>
+<p>Entre uma vez. Este aparelho ficará conectado por até 30 dias.</p>
+${note}
+<div class="field"><label>Usuário</label><input name="username" autocomplete="username" required autofocus></div>
+<div class="field"><label>Senha</label><input name="password" type="password" autocomplete="current-password" required></div>
+<button type="submit">Entrar</button>
+<div class="small">A senha não fica salva no aplicativo.</div>
+</form>
+</body>
+</html>`;
+}
+
+app.get("/__panel/login",(req,res)=>{
+  res.set("Cache-Control","no-store");
+  res.type("html").send(panelLoginPage());
+});
+
+app.post("/__panel/login",(req,res)=>{
+  const {user,pass}=panelCredentials();
+  if(!user||!pass){
+    return res.status(503).send("Painel administrativo sem credenciais configuradas.");
+  }
+
+  const ok=
+    safeTextEqual(req.body?.username||"",user)&&
+    safeTextEqual(req.body?.password||"",pass);
+
+  if(!ok){
+    res.status(401);
+    res.set("Cache-Control","no-store");
+    return res.type("html").send(panelLoginPage("Usuário ou senha incorretos."));
+  }
+
+  res.set("Set-Cookie",panelSessionCookie());
+  res.set("Cache-Control","no-store");
+  return res.redirect(303,"/");
+});
+
+app.get("/__panel/logout",(req,res)=>{
+  res.set(
+    "Set-Cookie",
+    PANEL_SESSION_COOKIE+"=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
+  );
+  res.set("Cache-Control","no-store");
+  return res.redirect(303,"/__panel/login");
+});
+
+function panelSessionAuth(req,res,next){
   const publicPath =
     req.path.startsWith("/api/gelo/") ||
     req.path.startsWith("/api/webhooks/") ||
     req.path.startsWith("/api/agent/") ||
-    req.path === "/api/health";
+    req.path === "/api/health" ||
+    req.path === "/__panel/login";
+
   if(publicPath)return next();
+  if(panelAuthorized(req))return next();
 
-  const user=String(process.env.PANEL_BASIC_USER||"").trim();
-  const pass=String(process.env.PANEL_BASIC_PASS||"");
-  if(!user||!pass)return res.status(503).send("Painel administrativo sem credenciais configuradas.");
+  if(req.method==="GET"||req.method==="HEAD"){
+    res.set("Cache-Control","no-store");
+    return res.redirect(303,"/__panel/login");
+  }
 
-  const header=String(req.get("authorization")||"");
-  if(!header.startsWith("Basic ")){
-    res.set("WWW-Authenticate",'Basic realm="Gelo Tutoia - Painel", charset="UTF-8"');
-    return res.status(401).send("Autenticação necessária.");
-  }
-  let decoded="";
-  try{decoded=Buffer.from(header.slice(6),"base64").toString("utf8")}catch{}
-  const sep=decoded.indexOf(":");
-  const gotUser=sep>=0?decoded.slice(0,sep):"";
-  const gotPass=sep>=0?decoded.slice(sep+1):"";
-  if(gotUser!==user||gotPass!==pass){
-    res.set("WWW-Authenticate",'Basic realm="Gelo Tutoia - Painel", charset="UTF-8"');
-    return res.status(401).send("Usuário ou senha inválidos.");
-  }
-  next();
+  return res.status(401).json({error:"Autenticação necessária."});
 }
-app.use(panelBasicAuth);
+
+app.use(panelSessionAuth);
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
