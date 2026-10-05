@@ -220,7 +220,37 @@
     v.tipo=prod==='esc'?'esc':'filt';v.pesoKg=prod==='f5'?5:prod==='f10'?10:20;v.qtd=q;v.valor=val;v.pag=pag;recalcularDia(d);saveDias(ds);syncHoje(d);toast('✓ Venda corrigida');telaDiaCliente(nome,data)
   };
   window.excluirVendaCliente=function(nome,data,idx){
-    confirmar('Excluir venda?','Esta venda será removida e os totais serão recalculados.','Sim, excluir',()=>{const ds=dias(),d=ds.find(x=>x.data===data);if(!d?.vpc?.[nome])return;d.vpc[nome].splice(idx,1);recalcularDia(d);saveDias(ds);syncHoje(d);toast('🗑 Venda excluída');telaDiaCliente(nome,data)})
+    confirmar('Excluir venda?','Esta venda será removida e os totais serão recalculados. Se veio do WhatsApp, também será marcada como excluída no servidor para não voltar.','Sim, excluir',async()=>{
+      const ds=dias(),d=ds.find(x=>x.data===data);
+      if(!d?.vpc?.[nome])return;
+      const venda=d.vpc[nome][idx];
+      if(!venda)return;
+      const remoteId=String(venda?.remoteId||'').trim();
+      if(remoteId){
+        try{
+          const rr=await fetch('https://painel-clientes-production.up.railway.app/api/gelo/queue/status',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({remote_id:remoteId,status:'deleted'}),
+            cache:'no-store'
+          });
+          if(!rr.ok)throw new Error('HTTP '+rr.status);
+        }catch(e){
+          console.warn('Falha ao excluir venda no servidor',e);
+          return toast('⚠ Não consegui excluir a venda no servidor. Tente novamente.');
+        }
+        try{
+          const vr=(typeof vendasRecebidas!=='undefined'?vendasRecebidas:[]).findIndex(x=>String(x?.remoteId||'')===remoteId);
+          if(vr>=0){vendasRecebidas.splice(vr,1);if(typeof salvarInbox==='function')salvarInbox();}
+        }catch(e){}
+      }
+      d.vpc[nome].splice(idx,1);
+      recalcularDia(d);
+      saveDias(ds);
+      syncHoje(d);
+      toast('🗑 Venda excluída');
+      telaCorrecoesHoje(nome);
+    })
   };
 
   function dividasCliente(nome){
@@ -261,6 +291,19 @@
       <button class="quick-btn q-fiado" onclick="telaFiado()"><span class="qi">📕</span>Fiado</button>
     </div><div class="sec-title">Clientes</div>`;
     CLIENTES.forEach(nome=>{const done=S.atendidos.has(nome),vs=S.vpc[nome]||[],ts=vs.reduce((a,v)=>a+(v.tipo!=='obs'?(Number(v.qtd)||0):0),0),tv=vs.reduce((a,v)=>a+(Number(v.valor)||0),0),b=document.createElement('button');b.className='cli-btn '+(done?'done':'norm');b.innerHTML='<span style="flex:1">'+esc(nome)+'<span class="tipo-gelo-tag">'+(tipoCliente(nome)==='filtrado'?'FILTRADO':tipoCliente(nome)==='escamas'?'ESCAMA':'AMBOS')+'</span></span>'+(done?'<span class="cli-badge">✓ '+ts+' — '+dinheiro(tv)+'</span>':'')+'<span class="cli-arrow">›</span>';b.onclick=()=>{scrollPos=b.offsetTop-30;telaVenda(nome)};div.appendChild(b)});
-    div.insertAdjacentHTML('beforeend','<div class="divider"></div>');addBtn(div,'DESPESAS: −'+dinheiro(S.desp),'act-btn btn-desp',telaDespesas);addBtn(div,'RELATÓRIO DO DIA','act-btn btn-rel',telaConferencia);addBtn(div,'⚙️ CONFIGURAÇÕES','act-btn btn-back',telaConfiguracoes);addBtn(div,'🗑 APAGAR VENDAS DO DIA','act-btn gt-clear-day',()=>confirmar('Apagar vendas do dia?','Somente as vendas e totais do movimento atual serão apagados. Caderno de Vendas, históricos, clientes, preços e configurações serão preservados.','Sim, apagar o dia',async()=>{try{if(typeof fetch==='function')await fetch('https://painel-clientes-production.up.railway.app/api/gelo/reset-day',{method:'POST',headers:{'Content-Type':'application/json'}})}catch(e){}S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};try{vendasRecebidas.splice(0,vendasRecebidas.length);salvarInbox()}catch(e){}salvarEstado();updHdr();telaClientes();toast('🗑 Vendas do dia apagadas. Caderno e históricos preservados.')}));if(restore&&scrollPos>0)setTimeout(()=>{div.scrollTop=scrollPos},60)
+    div.insertAdjacentHTML('beforeend','<div class="divider"></div>');addBtn(div,'DESPESAS: −'+dinheiro(S.desp),'act-btn btn-desp',telaDespesas);addBtn(div,'RELATÓRIO DO DIA','act-btn btn-rel',telaConferencia);addBtn(div,'⚙️ CONFIGURAÇÕES','act-btn btn-back',telaConfiguracoes);addBtn(div,'🗑 APAGAR VENDAS DO DIA','act-btn gt-clear-day',()=>confirmar('Apagar vendas do dia?','Somente as vendas e totais do movimento atual serão apagados. Caderno de Vendas, históricos, clientes, preços e configurações serão preservados.','Sim, apagar o dia',async()=>{
+  try{
+    const rr=await fetch('https://painel-clientes-production.up.railway.app/api/gelo/reset-day',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store'});
+    const data=await rr.json().catch(()=>({}));
+    if(!rr.ok||data?.ok!==true)throw new Error(data?.error||('HTTP '+rr.status));
+  }catch(e){
+    console.warn('Falha ao apagar movimento do dia no servidor',e);
+    return toast('⚠ Não consegui apagar as vendas do dia. Tente novamente.');
+  }
+  S={esc:0,filt:0,caixa:0,pix:0,din:0,desp:0,fiad:0,vpc:{},despDia:[],atendidos:new Set(),ultima:null,qtd:1};
+  try{vendasRecebidas.splice(0,vendasRecebidas.length);salvarInbox()}catch(e){}
+  salvarEstado();updHdr();telaClientes();
+  toast('🗑 Vendas do dia apagadas. Caderno e históricos preservados.');
+}));if(restore&&scrollPos>0)setTimeout(()=>{div.scrollTop=scrollPos},60)
   };
 })();
