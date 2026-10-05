@@ -7,35 +7,139 @@ const { interpretarVendas } = require("./sales-parser.js");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
+app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 
-function panelBasicAuth(req,res,next){
+const PANEL_SESSION_COOKIE="gelo_panel_session";
+
+function panelCredentials(){
+  return {
+    user:String(process.env.PANEL_BASIC_USER||"").trim(),
+    pass:String(process.env.PANEL_BASIC_PASS||"")
+  };
+}
+
+function safeTextEqual(a,b){
+  const aa=Buffer.from(String(a));
+  const bb=Buffer.from(String(b));
+  return aa.length===bb.length && crypto.timingSafeEqual(aa,bb);
+}
+
+function parseCookies(header=""){
+  const out={};
+  for(const part of String(header).split(";")){
+    const i=part.indexOf("=");
+    if(i<0)continue;
+    const key=part.slice(0,i).trim();
+    const value=part.slice(i+1).trim();
+    try{out[key]=decodeURIComponent(value)}catch{out[key]=value}
+  }
+  return out;
+}
+
+function panelSessionToken(){
+  const {user,pass}=panelCredentials();
+  if(!user||!pass)return "";
+  return crypto
+    .createHmac("sha256",pass)
+    .update("gelo-painel-session:"+user)
+    .digest("hex");
+}
+
+function panelAuthorized(req){
+  const token=parseCookies(req.headers.cookie||"")[PANEL_SESSION_COOKIE]||"";
+  const expected=panelSessionToken();
+  return Boolean(expected)&&safeTextEqual(token,expected);
+}
+
+function panelSessionCookie(){
+  return PANEL_SESSION_COOKIE+"="+encodeURIComponent(panelSessionToken())+
+    "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000";
+}
+
+function panelLoginPage(message=""){
+  const note=message
+    ?'<div style="margin:0 0 14px;padding:11px 12px;border-radius:12px;background:#3a1c24;color:#ffb6c1;border:1px solid #69303d">'+message+'</div>'
+    :"";
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Entrar no Painel</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1117;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:20px}.card{width:min(100%,420px);background:#171c25;border:1px solid #2c3442;border-radius:24px;padding:28px;box-shadow:0 24px 70px #0008}h1{font-size:27px;margin:0 0 8px}p{margin:0 0 22px;color:#aeb8c8}.field{margin:14px 0}.field label{display:block;margin-bottom:7px;color:#d8deea}.field input{width:100%;padding:15px 16px;border-radius:14px;border:1px solid #39465b;background:#0d1420;color:#fff;font-size:17px;outline:none}.field input:focus{border-color:#3b9cff}button{width:100%;margin-top:10px;padding:15px;border:0;border-radius:14px;background:#2586d4;color:#fff;font-size:17px;font-weight:800}.small{font-size:12px;color:#7f8b9f;margin-top:16px;text-align:center}
+</style>
+</head>
+<body>
+<form class="card" method="post" action="/__panel/login" autocomplete="on">
+<h1>Entrar no Painel</h1>
+<p>Entre uma vez. Este aparelho ficará conectado por até 30 dias.</p>
+${note}
+<div class="field"><label>Usuário</label><input name="username" autocomplete="username" required autofocus></div>
+<div class="field"><label>Senha</label><input name="password" type="password" autocomplete="current-password" required></div>
+<button type="submit">Entrar</button>
+<div class="small">A senha não fica salva no aplicativo.</div>
+</form>
+</body>
+</html>`;
+}
+
+app.get("/__panel/login",(req,res)=>{
+  res.set("Cache-Control","no-store");
+  res.type("html").send(panelLoginPage());
+});
+
+app.post("/__panel/login",(req,res)=>{
+  const {user,pass}=panelCredentials();
+  if(!user||!pass){
+    return res.status(503).send("Painel administrativo sem credenciais configuradas.");
+  }
+
+  const ok=
+    safeTextEqual(req.body?.username||"",user)&&
+    safeTextEqual(req.body?.password||"",pass);
+
+  if(!ok){
+    res.status(401);
+    res.set("Cache-Control","no-store");
+    return res.type("html").send(panelLoginPage("Usuário ou senha incorretos."));
+  }
+
+  res.set("Set-Cookie",panelSessionCookie());
+  res.set("Cache-Control","no-store");
+  return res.redirect(303,"/");
+});
+
+app.get("/__panel/logout",(req,res)=>{
+  res.set(
+    "Set-Cookie",
+    PANEL_SESSION_COOKIE+"=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
+  );
+  res.set("Cache-Control","no-store");
+  return res.redirect(303,"/__panel/login");
+});
+
+function panelSessionAuth(req,res,next){
   const publicPath =
     req.path.startsWith("/api/gelo/") ||
     req.path.startsWith("/api/webhooks/") ||
-    req.path === "/api/health";
+    req.path.startsWith("/api/agent/") ||
+    req.path === "/api/health" ||
+    req.path === "/__panel/login";
+
   if(publicPath)return next();
+  if(panelAuthorized(req))return next();
 
-  const user=String(process.env.PANEL_BASIC_USER||"").trim();
-  const pass=String(process.env.PANEL_BASIC_PASS||"");
-  if(!user||!pass)return res.status(503).send("Painel administrativo sem credenciais configuradas.");
+  if(req.method==="GET"||req.method==="HEAD"){
+    res.set("Cache-Control","no-store");
+    return res.redirect(303,"/__panel/login");
+  }
 
-  const header=String(req.get("authorization")||"");
-  if(!header.startsWith("Basic ")){
-    res.set("WWW-Authenticate",'Basic realm="Gelo Tutoia - Painel", charset="UTF-8"');
-    return res.status(401).send("Autenticação necessária.");
-  }
-  let decoded="";
-  try{decoded=Buffer.from(header.slice(6),"base64").toString("utf8")}catch{}
-  const sep=decoded.indexOf(":");
-  const gotUser=sep>=0?decoded.slice(0,sep):"";
-  const gotPass=sep>=0?decoded.slice(sep+1):"";
-  if(gotUser!==user||gotPass!==pass){
-    res.set("WWW-Authenticate",'Basic realm="Gelo Tutoia - Painel", charset="UTF-8"');
-    return res.status(401).send("Usuário ou senha inválidos.");
-  }
-  next();
+  return res.status(401).json({error:"Autenticação necessária."});
 }
-app.use(panelBasicAuth);
+
+app.use(panelSessionAuth);
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
@@ -110,6 +214,15 @@ app.post("/api/gelo/queue/upsert", (req, res) => {
       const r=upsertPendingSale(item);
       if(r==="inserted") inserted++;
       else if(r==="existing") existing++;
+    }
+    for(const item of items){
+      console.log("SALES_UPSERT_ROW",JSON.stringify({
+        remote_id:String(item?.remote_id||""),remote_key:String(item?.remote_key||""),
+        message_id:String(item?.message_id||""),recebido_em:String(item?.recebido_em||item?.timestamp||""),
+        cliente:String(item?.cliente||item?.client||""),qtd:Number(item?.qtd||item?.qty||0),
+        tipo:String(item?.tipo||item?.product_type||""),pagamento:String(item?.pagamento||item?.payment||"Não informado"),
+        transcricao:String(item?.transcricao||item?.transcription||""),remetente:String(item?.remetente||item?.sender||"")
+      }));
     }
     return res.json({ok:true,inserted,existing,total:items.length});
   }catch(e){
@@ -209,6 +322,7 @@ if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, J
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 initSalesQueue();
+logRecentSalesForAgent(2);
 
 function atomicWriteFile(filePath, content){
   const tmp=filePath+".tmp-"+process.pid+"-"+Date.now();
@@ -258,10 +372,24 @@ function normalizeQueueTimestamp(v){
   if(/^\d{13}$/.test(s))return Number(s);
   const t=Date.parse(s);return Number.isFinite(t)?t:Date.now();
 }
+function saleSenderAuthorized(item={}){
+  const raw=String(item.remetente||item.sender||"").trim();
+  if(!raw) return true; // preserva lançamentos manuais/locais sem remetente
+  const phone=raw.replace(/@.*/,"").replace(/\D/g,"");
+  const jid=raw;
+  if(phone && authorizedHistoryPhones().has(phone)) return true;
+  if(authorizedHistoryJids().has(jid)) return true;
+  const name=String(item.nome_remetente||item.sender_name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  return /\b(flavio|maira|luciano|tafa|tafarel|claudio|dinho)\b/.test(name);
+}
 function upsertPendingSale(item={}){
   if(!salesDb)throw new Error("Fila SQLite indisponível");
   const remoteId=String(item.remote_id||"").trim();
   if(!remoteId)return "invalid";
+  if(!saleSenderAuthorized(item)){
+    console.log("SALES_QUEUE_REJECT_UNAUTHORIZED",JSON.stringify({remote_id:remoteId,remetente:String(item.remetente||item.sender||""),nome:String(item.nome_remetente||item.sender_name||"")}));
+    return "unauthorized";
+  }
   const messageId=String(item.message_id||item.remote_key||remoteId).replace(/^mensagem:/,"").trim();
   const now=Date.now();
   const receivedMs=normalizeQueueTimestamp(item.recebido_em||item.timestamp_ms||item.timestamp);
@@ -302,6 +430,37 @@ function listPendingSales(){
     pagamento:r.payment||"Não informado",confianca:r.confidence||"",
     remetente:r.sender||"",nome_remetente:r.sender_name||"",status:r.status
   }));
+}
+function mapSaleRow(r){
+  return {
+    remote_id:r.remote_id,remote_key:r.remote_key,message_id:r.message_id,
+    recebido_em:r.received_at||new Date(Number(r.received_ms)||Date.now()).toISOString(),
+    timestamp_ms:Number(r.received_ms)||0,transcricao:r.transcription||"",
+    cliente:r.client||"",qtd:Number(r.qty)||0,tipo:r.product_type||"",
+    pagamento:r.payment||"Não informado",confianca:r.confidence||"",
+    remetente:r.sender||"",nome_remetente:r.sender_name||"",status:r.status,
+    launched_ms:Number(r.launched_ms)||0,deleted_ms:Number(r.deleted_ms)||0,archived_ms:Number(r.archived_ms)||0
+  };
+}
+function listSalesByLocalDateRange(targetDate,inicio="00:00:00",fim="23:59:59"){
+  if(!salesDb)return[];
+  const rows=salesDb.prepare("SELECT * FROM sales_queue ORDER BY received_ms ASC").all();
+  return rows.filter(r=>{
+    const iso=r.received_at||new Date(Number(r.received_ms)||0).toISOString();
+    const d=localDate(iso),h=localTime(iso);
+    const mapped=mapSaleRow(r);
+    return d===targetDate && !!h && h>=inicio && h<=fim && saleSenderAuthorized(mapped);
+  }).map(mapSaleRow);
+}
+function logRecentSalesForAgent(days=2){
+  if(!salesDb)return;
+  const cutoff=Date.now()-Math.max(1,Number(days)||2)*86400000;
+  const rows=salesDb.prepare("SELECT * FROM sales_queue WHERE received_ms>=? ORDER BY received_ms ASC").all(cutoff);
+  for(const row of rows){
+    const v=mapSaleRow(row);
+    console.log("SALES_HISTORY_ROW",JSON.stringify(v));
+  }
+  console.log("SALES_HISTORY_READY",JSON.stringify({rows:rows.length,days}));
 }
 function setSaleStatus(remoteId,status){
   if(!salesDb)return 0;
@@ -490,7 +649,17 @@ async function downloadWuzAudioBase64(token, audio) {
   });
   let p=out?.data??out?.Data??out;
   if(typeof p==="string"){ try{ p=JSON.parse(p); }catch{} }
-  return String(p?.Data??p?.data??"").replace(/^data:[^;]+;base64,/i,"");
+  const raw=String(p?.Data??p?.data??"").trim();
+  // WuzAPI returns a Data URL. Audio MIME can contain parameters such as
+  // "audio/ogg; codecs=opus", so the prefix is not always "mime;base64,".
+  const comma=raw.indexOf(",");
+  const candidate=/^data:/i.test(raw) && comma>=0 ? raw.slice(comma+1) : raw;
+  const clean=candidate.replace(/\s+/g,"");
+  if(!clean || !/^[A-Za-z0-9+/]*={0,2}$/.test(clean) || clean.length%4!==0){
+    console.error("WuzAPI retornou áudio em formato base64 inválido", {prefix:raw.slice(0,80),length:raw.length});
+    return "";
+  }
+  return clean;
 }
 async function processAuthorizedHistoricalAudio({token,messageId,timestamp,person,senderJid="",senderAlt="",chatJid="",audio}) {
   const id=String(messageId||"").trim();
@@ -1131,23 +1300,27 @@ app.get("/api/agent/historico-dia", async (req, res) => {
     ]);
     const personById = new Map(historico.map(m=>[m.message_id,m.pessoa]).filter(x=>x[0]));
 
-    let inbox = [];
-    try {
-      const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
-      const inboxData = await inboxResp.json().catch(()=>({}));
-      inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
-    } catch (e) {
-      console.error("Falha ao cruzar inbox no histórico diário:", e?.message || e);
+    // A fonte principal do histórico agora é o SQLite persistente do Railway.
+    // Ele preserva também vendas já lançadas, arquivadas ou excluídas.
+    let inbox = listSalesByLocalDateRange(targetDate,inicio,fim);
+    if(!inbox.length){
+      try {
+        const inboxResp = await fetch(GELO_INBOX_URL, { headers:{Accept:"application/json"} });
+        const inboxData = await inboxResp.json().catch(()=>({}));
+        inbox = inboxResp.ok && Array.isArray(inboxData?.vendas) ? inboxData.vendas : [];
+      } catch (e) {
+        console.error("Falha ao usar fallback da inbox no histórico diário:", e?.message || e);
+      }
     }
 
     const vendas = inbox.filter(v => {
-      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
+      const id = String(v?.message_id || v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       return localDate(v?.recebido_em) === targetDate &&
         dentroDaFaixa(v?.recebido_em) &&
-        (ids.has(id) || Object.values(phonesByName).includes(remetente));
+        (!ids.size || ids.has(id) || Object.values(phonesByName).includes(remetente));
     }).map(v => {
-      const id = String(v?.remote_key || "").replace(/^mensagem:/, "");
+      const id = String(v?.message_id || v?.remote_key || "").replace(/^mensagem:/, "");
       const remetente = String(v?.remetente || "").replace(/\D/g, "");
       const pessoa = personById.get(id) ||
         Object.entries(phonesByName).find(([,phone])=>phone===remetente)?.[0] || "";
@@ -1160,7 +1333,9 @@ app.get("/api/agent/historico-dia", async (req, res) => {
         tipo:v.tipo,
         pagamento:v.pagamento,
         confianca:v.confianca,
-        remote_key:v.remote_key
+        status:v.status||"",
+        remote_key:v.remote_key,
+        remote_id:v.remote_id||""
       };
     }).sort((a,b)=>String(a.recebido_em).localeCompare(String(b.recebido_em)));
 
@@ -1185,6 +1360,21 @@ app.get("/api/agent/historico-dia", async (req, res) => {
   } catch (e) {
     console.error("Falha no histórico diário do agente:", e?.message || e);
     res.status(500).json({ error:String(e?.message || e) });
+  }
+});
+
+app.get("/api/agent/vendas-dia", (req,res)=>{
+  try{
+    if(!agentAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
+    const data=String(req.query?.data||"").trim();
+    const targetDate=/^\d{4}-\d{2}-\d{2}$/.test(data)?data:new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const norm=(v,fallback)=>{const m=String(v||"").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);if(!m)return fallback;return String(Math.min(23,+m[1])).padStart(2,"0")+":"+String(Math.min(59,+m[2])).padStart(2,"0")+":"+String(Math.min(59,+(m[3]||0))).padStart(2,"0")};
+    const inicio=norm(req.query?.inicio,"00:00:00"),fim=norm(req.query?.fim,"23:59:59");
+    const vendas=listSalesByLocalDateRange(targetDate,inicio,fim);
+    return res.json({ok:true,data:targetDate,faixa:{inicio,fim},total:vendas.length,vendas});
+  }catch(e){
+    console.error("Falha ao consultar vendas do dia:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"});
   }
 });
 
@@ -1614,6 +1804,33 @@ app.post("/api/webhooks/wuzapi/:id", async (req, res) => {
     /@s\.whatsapp\.net$/i.test(senderJid) ? senderJid :
     /@s\.whatsapp\.net$/i.test(senderAltJid) ? senderAltJid :
     senderPhone;
+
+  // Preserva primeiro a mensagem bruta de qualquer ajudante autorizado.
+  // A interpretação da venda acontece depois e nunca substitui este histórico.
+  const rawAuthorizedEntry={
+    message_id:String(info?.ID || info?.Id || info?.id || ""),
+    timestamp:String(info?.Timestamp || new Date().toISOString()),
+    pessoa:String(info?.PushName || c.businessName || c.name || "Remetente"),
+    sender_jid:senderJid,
+    sender_alt:senderAltJid,
+    chat_jid:chatJid,
+    tipo:String(info?.Type || ""),
+    texto:String(text || ""),
+    transcricao:String(text || ""),
+    is_from_me:info?.IsFromMe === true,
+    is_group:info?.IsGroup === true,
+    origem:"wuzapi-client-raw"
+  };
+  if(isAuthorizedHistoryEntry({...rawAuthorizedEntry,is_from_me:false})){
+    appendWuzapiHistory({...rawAuthorizedEntry,is_from_me:false});
+    console.log("AUTHORIZED_RAW_MESSAGE_SAVED",JSON.stringify({
+      message_id:rawAuthorizedEntry.message_id,
+      timestamp:rawAuthorizedEntry.timestamp,
+      sender:rawAuthorizedEntry.sender_alt||rawAuthorizedEntry.sender_jid,
+      tipo:rawAuthorizedEntry.tipo,
+      tem_texto:!!rawAuthorizedEntry.texto
+    }));
+  }
 
   // Se uma instância interna/autorizada estiver enviando uma venda, encaminha ao Worker
   // usando o número real do remetente. Isso cobre eventos em que o destino chega apenas como LID
