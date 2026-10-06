@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f5ef">
+<title>Gelo Tutóia · Controle de vendas</title>
+<style>
+:root{
+  --bg:#f7f5ef;--surface:#fff;--ink:#292c27;--muted:#8c8f86;--line:#dedfd8;
+  --soft:#eef0e4;--soft2:#f4f5ef;--gold:#f2c35f;--green:#64865f;--green-soft:#edf4e9;
+  --peach:#fbf0e8;--danger:#b85b50;--shadow:0 8px 26px rgba(44,48,39,.05)
+}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+button,input,select{font:inherit}button{cursor:pointer}
+.shell{min-height:100vh}
+.top{background:#f6f4ee;border-bottom:1px solid #e5e4de}
+.brand{max-width:1180px;margin:auto;padding:28px 30px;display:flex;align-items:center;gap:16px}
+.mark{width:68px;height:68px;border-radius:20px;background:linear-gradient(145deg,#f3c45d,#f7d579);display:grid;place-items:center;font-size:38px;box-shadow:var(--shadow)}
+.brand h1{font-size:31px;line-height:1;margin:0 0 9px;font-weight:800;letter-spacing:-1px}.brand small{letter-spacing:4px;color:#777a72;font-weight:600}
+.nav{max-width:1180px;margin:auto;padding:12px 30px 16px;display:flex;gap:8px}
+.nav button{border:0;background:transparent;padding:18px 24px;border-radius:18px;color:#666a62;font-weight:700;font-size:17px;display:flex;align-items:center;gap:10px}
+.nav button.active{background:#e8ebdd;color:#3a4538}.nav .ico{font-size:20px}
+.crumb{background:#fff;border-bottom:1px solid #e7e6e1}.crumb-inner{max-width:1180px;margin:auto;padding:20px 30px;display:flex;justify-content:space-between;color:#777b73}.saved{display:flex;gap:9px;align-items:center}.dot{width:10px;height:10px;background:#61905f;border-radius:50%}
+.main{max-width:1180px;margin:auto;padding:40px 30px 70px}
+.hero{display:flex;justify-content:space-between;gap:25px;align-items:center;margin-bottom:34px}
+.eyebrow{font-size:13px;letter-spacing:4px;color:#888c83;font-weight:800;margin-bottom:18px}.hero h2{font-size:48px;line-height:1.08;letter-spacing:-2px;margin:0 0 18px;max-width:590px}.hero p{font-size:19px;line-height:1.75;color:#777b73;margin:0;max-width:590px}
+.primary{border:0;background:linear-gradient(135deg,#f2c45d,#f5ce72);padding:20px 28px;border-radius:16px;font-weight:800;color:#403a2d;font-size:17px;box-shadow:0 8px 18px rgba(202,155,56,.18);white-space:nowrap}
+.filters{background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px 24px;display:grid;grid-template-columns:180px 1fr 1fr;gap:16px;align-items:end;box-shadow:var(--shadow);margin-bottom:38px}
+.field label{display:block;color:#8a8e85;font-size:14px;margin-bottom:9px}.field input,.field select{width:100%;border:1px solid #e0e1da;background:#fafaf6;border-radius:12px;padding:14px 15px;color:#5f625b;outline:none}
+.period-switch{display:flex;background:#f1f1eb;border-radius:14px;padding:4px;gap:4px}.period-switch button{flex:1;border:0;background:transparent;padding:11px 12px;border-radius:10px;font-weight:700;color:#7f837a}.period-switch button.active{background:#fff;color:#374035;box-shadow:0 2px 8px #0000000c}
+.section-title{display:flex;justify-content:space-between;align-items:end;margin:0 0 18px}.section-title h3{font-size:25px;margin:0}.section-title small{color:#989b92}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:24px;min-height:170px;box-shadow:var(--shadow)}.card.highlight{background:#f0f1e5}.card .label{color:#7a7f76;font-weight:700;margin-bottom:25px}.card .value{font-size:38px;font-weight:800;letter-spacing:-1.3px}.card .sub{color:#9a9d94;font-size:13px;margin-top:14px;line-height:1.4}
+.cards.secondary{grid-template-columns:repeat(3,1fr)}.metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:20px 0}
+.table-card{background:#fff;border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:var(--shadow);margin-top:24px}.table-head{padding:21px 24px;border-bottom:1px solid #ecece7;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.table-head strong{font-size:19px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;padding:15px 18px;border-bottom:1px solid #f0f0eb;font-size:14px}th{color:#898d84;font-weight:700;background:#fbfbf8}td strong{font-size:15px}.pill{display:inline-block;border-radius:999px;padding:5px 10px;background:#eef2e9;color:#51684d;font-size:12px;font-weight:700}.pill.pix{background:#edf4f1;color:#4b7167}.pill.money{background:#f6f0df;color:#7d6b3e}.empty{padding:42px;text-align:center;color:#92968c}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap}.ghost{border:1px solid #dedfd7;background:#fff;padding:10px 14px;border-radius:12px;color:#686c64;font-weight:700}.danger{color:#a4584f}
+.daily-list{display:grid;gap:12px;margin-top:18px}.daily{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:grid;grid-template-columns:1.2fr repeat(5,1fr);gap:12px;align-items:center}.daily .date{font-weight:800}.daily small{display:block;color:#95988f;font-size:11px;margin-bottom:4px}.daily b{font-size:15px}
+.modal-back{position:fixed;inset:0;background:#262a2380;display:none;place-items:center;padding:18px;z-index:50}.modal-back.show{display:grid}.modal{background:#fff;border-radius:24px;padding:24px;width:min(100%,520px);box-shadow:0 30px 90px #0004}.modal h3{margin:0 0 18px;font-size:24px}.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.modal .field.full{grid-column:1/-1}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.actions button{border:0;border-radius:12px;padding:12px 16px;font-weight:800}.actions .cancel{background:#eff0eb;color:#656960}.actions .save{background:#efc45f;color:#433d2f}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#33372f;color:#fff;padding:12px 17px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;z-index:90}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.hidden{display:none!important}
+@media(max-width:820px){
+ .brand{padding:22px 20px}.mark{width:58px;height:58px;border-radius:17px;font-size:32px}.brand h1{font-size:28px}
+ .nav{padding:8px 18px 14px}.nav button{padding:15px 14px;font-size:15px;flex:1;justify-content:center}.nav .ico{display:none}
+ .crumb-inner{padding:18px 20px;font-size:13px}.main{padding:34px 20px 60px}.hero{align-items:flex-start}.hero h2{font-size:42px}.hero p{font-size:17px}.primary{padding:17px 18px}
+ .filters{grid-template-columns:1fr 1fr;padding:17px}.filters .field:first-child{grid-column:1/-1}
+ .cards{grid-template-columns:1fr 1fr}.cards.secondary{grid-template-columns:1fr 1fr}.cards.secondary .card:last-child{grid-column:1/-1}.card{min-height:155px;padding:20px}.card .value{font-size:32px}
+ .daily{grid-template-columns:1fr 1fr 1fr}.daily .date{grid-column:1/-1}.modal-grid{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+ .brand small{letter-spacing:3px;font-size:10px}.nav button{font-size:14px}.crumb .saved{display:none}
+ .hero{display:block}.hero h2{font-size:38px}.hero .primary{margin-top:22px;width:100%}
+ .filters{grid-template-columns:1fr}.filters .field:first-child{grid-column:auto}
+ .cards,.cards.secondary,.metric-row{grid-template-columns:1fr 1fr;gap:12px}.card{min-height:145px;padding:18px}.card .label{margin-bottom:18px}.card .value{font-size:29px}.cards.secondary .card:last-child{grid-column:1/-1}
+ .section-title{align-items:flex-start;gap:8px}.section-title h3{font-size:22px}.daily{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand"><div class="mark">❄</div><div><h1>Gelo Tutóia</h1><small>CONTROLE DE VENDAS</small></div></div>
+    <nav class="nav">
+      <button data-view="vendas" class="active"><span class="ico">◷</span>Vendas do dia</button>
+      <button data-view="caderno"><span class="ico">▤</span>Caderno de vendas</button>
+      <button data-view="saidas"><span class="ico">↗</span>Saídas</button>
+    </nav>
+  </header>
+  <div class="crumb"><div class="crumb-inner"><div>Gelo Tutóia &nbsp; / &nbsp; <b id="crumb-title">Vendas do dia</b></div><div class="saved"><span class="dot"></span>Banco central do Gelo Tutóia</div></div></div>
+
+  <main class="main">
+    <section id="view-vendas">
+      <div class="hero"><div><div class="eyebrow">BOM TRABALHO, CLÁUDIO</div><h2>Cada venda,<br>na conta.</h2><p>Confira suas entregas e feche o dia com tudo em ordem.</p></div><button class="primary" onclick="openSale()">＋ &nbsp;Registrar venda</button></div>
+      <div class="filters">
+        <div class="field"><label>Dia de trabalho</label><input id="date-vendas" type="date"></div>
+        <div class="field"><label>Horário inicial</label><input id="time-start" type="time"></div>
+        <div class="field"><label>Horário final</label><input id="time-end" type="time"></div>
+      </div>
+      <div class="section-title"><h3>O dia em números</h3><small id="scope-vendas">Vendas atuais · dia inteiro</small></div>
+      <div class="cards">
+        <div class="card highlight"><div class="label">Bruto</div><div class="value" id="v-bruto">R$ 0,00</div><div class="sub">Inclui dinheiro, PIX e fiado</div></div>
+        <div class="card"><div class="label">Dinheiro</div><div class="value" id="v-dinheiro">R$ 0,00</div><div class="sub">Recebido em dinheiro</div></div>
+        <div class="card"><div class="label">PIX</div><div class="value" id="v-pix">R$ 0,00</div><div class="sub">Recebido por transferência</div></div>
+        <div class="card"><div class="label">Saídas</div><div class="value" id="v-saidas">R$ 0,00</div><div class="sub">Despesas no horário escolhido</div></div>
+      </div>
+      <div class="cards secondary">
+        <div class="card"><div class="label">Líquido</div><div class="value" id="v-liquido">R$ 0,00</div><div class="sub">Bruto menos saídas</div></div>
+        <div class="card"><div class="label">❄ Gelo em escamas</div><div class="value" id="v-escamas">0</div><div class="sub" id="v-escamas-value">R$ 0,00</div></div>
+        <div class="card"><div class="label">◈ Gelo filtrado</div><div class="value" id="v-filtrado">0</div><div class="sub" id="v-filtrado-value">R$ 0,00</div></div>
+      </div>
+      <div class="table-card">
+        <div class="table-head"><strong>Vendas atuais <span id="sales-count">0</span></strong><div class="toolbar"><button class="ghost" onclick="loadAll()">Atualizar</button></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Horário</th><th>Cliente</th><th>Gelo</th><th>Sacos</th><th>Pagamento</th><th>Total</th><th></th></tr></thead><tbody id="sales-body"></tbody></table></div>
+        <div class="empty hidden" id="sales-empty">O dia começa com a primeira venda.</div>
+      </div>
+    </section>
+
+    <section id="view-caderno" class="hidden">
+      <div class="hero"><div><div class="eyebrow">BOM TRABALHO, CLÁUDIO</div><h2>Sua rota tem<br>história.</h2><p>Histórico preservado no banco, com vendas, sacos, despesas e resultado líquido.</p></div></div>
+      <div class="filters">
+        <div class="field"><label>Data de referência</label><input id="date-caderno" type="date"></div>
+        <div class="field" style="grid-column:span 2"><label>Visualização</label><div class="period-switch"><button data-period="day" class="active">Dia</button><button data-period="week">Semana</button><button data-period="month">Mês</button></div></div>
+      </div>
+      <div class="section-title"><h3 id="book-title">Resumo do dia</h3><small id="book-range"></small></div>
+      <div class="cards">
+        <div class="card highlight"><div class="label">Bruto</div><div class="value" id="b-bruto">R$ 0,00</div><div class="sub">Total vendido no período</div></div>
+        <div class="card"><div class="label">Despesas</div><div class="value" id="b-despesas">R$ 0,00</div><div class="sub">Saídas registradas</div></div>
+        <div class="card"><div class="label">Líquido</div><div class="value" id="b-liquido">R$ 0,00</div><div class="sub">Bruto menos despesas</div></div>
+        <div class="card"><div class="label">Total de sacos</div><div class="value" id="b-sacos">0</div><div class="sub">Escamas + filtrado</div></div>
+      </div>
+      <div class="metric-row">
+        <div class="card"><div class="label">❄ Escamas</div><div class="value" id="b-escamas">0</div><div class="sub" id="b-escamas-value">R$ 0,00</div></div>
+        <div class="card"><div class="label">◈ Filtrado</div><div class="value" id="b-filtrado">0</div><div class="sub" id="b-filtrado-value">R$ 0,00</div></div>
+        <div class="card"><div class="label">Pagamentos</div><div class="sub" style="font-size:15px;line-height:2"><b id="b-dinheiro">R$ 0,00</b> dinheiro<br><b id="b-pix">R$ 0,00</b> PIX<br><b id="b-fiado">R$ 0,00</b> fiado</div></div>
+      </div>
+      <div class="table-card">
+        <div class="table-head"><strong>Histórico por dia</strong><small id="days-count"></small></div>
+        <div class="daily-list" id="daily-list" style="padding:0 18px 18px"></div>
+      </div>
+    </section>
+
+    <section id="view-saidas" class="hidden">
+      <div class="hero"><div><div class="eyebrow">CONTROLE DE DESPESAS</div><h2>Saídas sob<br>controle.</h2><p>Registre combustível, ajudante, lanche e outras despesas da rota.</p></div><button class="primary" onclick="openExpense()">＋ &nbsp;Registrar saída</button></div>
+      <div class="filters"><div class="field"><label>Dia</label><input id="date-saidas" type="date"></div></div>
+      <div class="section-title"><h3>Despesas do dia</h3><small id="expense-count">0 registros</small></div>
+      <div class="cards secondary">
+        <div class="card highlight"><div class="label">Total de saídas</div><div class="value" id="e-total">R$ 0,00</div><div class="sub">Somatório do dia selecionado</div></div>
+      </div>
+      <div class="table-card"><div class="table-wrap"><table><thead><tr><th>Horário</th><th>Descrição</th><th>Valor</th><th></th></tr></thead><tbody id="expense-body"></tbody></table></div><div class="empty hidden" id="expense-empty">Nenhuma saída registrada neste dia.</div></div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-back" id="sale-modal"><div class="modal"><h3>Registrar venda</h3><div class="modal-grid">
+  <div class="field full"><label>Cliente</label><input id="s-client" placeholder="Nome do cliente"></div>
+  <div class="field"><label>Tipo de gelo</label><select id="s-type"><option value="esc">Escamas</option><option value="filt">Filtrado</option></select></div>
+  <div class="field"><label>Sacos</label><input id="s-qty" type="number" min="1" value="1"></div>
+  <div class="field"><label>Pagamento</label><select id="s-payment"><option>Dinheiro</option><option>PIX</option><option>Fiado</option></select></div>
+  <div class="field"><label>Preço por saco</label><input id="s-price" type="number" min="0" step=".01" value="7"></div>
+  <div class="field"><label>Data</label><input id="s-date" type="date"></div>
+  <div class="field"><label>Horário</label><input id="s-time" type="time"></div>
+</div><div class="actions"><button class="cancel" onclick="closeModal('sale-modal')">Cancelar</button><button class="save" onclick="saveSale()">Salvar venda</button></div></div></div>
+
+<div class="modal-back" id="expense-modal"><div class="modal"><h3>Registrar saída</h3><div class="modal-grid">
+  <div class="field full"><label>Descrição</label><input id="e-desc" placeholder="Ex.: GNV, ajudante, lanche"></div>
+  <div class="field"><label>Valor</label><input id="e-amount" type="number" min="0" step=".01"></div>
+  <div class="field"><label>Data</label><input id="e-date" type="date"></div>
+  <div class="field"><label>Horário</label><input id="e-time" type="time"></div>
+</div><div class="actions"><button class="cancel" onclick="closeModal('expense-modal')">Cancelar</button><button class="save" onclick="saveExpense()">Salvar saída</button></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const nowTime=()=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date());
+let state={sales:[],expenses:[],period:'day'};
+
+function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200)}
+function closeModal(id){$(id).classList.remove('show')}
+function openSale(){$('s-client').value='';$('s-qty').value=1;$('s-type').value='esc';$('s-payment').value='Dinheiro';$('s-price').value=7;$('s-date').value=$('date-vendas').value||today();$('s-time').value=nowTime();$('sale-modal').classList.add('show')}
+function openExpense(){$('e-desc').value='';$('e-amount').value='';$('e-date').value=$('date-saidas').value||today();$('e-time').value=nowTime();$('expense-modal').classList.add('show')}
+
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
+function showView(v){
+  document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
+  ['vendas','caderno','saidas'].forEach(x=>$('view-'+x).classList.toggle('hidden',x!==v));
+  $('crumb-title').textContent=v==='vendas'?'Vendas do dia':v==='caderno'?'Caderno de vendas':'Saídas';
+  if(v==='caderno')renderBook(); if(v==='saidas')renderExpenses();
+}
+
+function localDateOf(iso){try{return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso))}catch{return ''}}
+function localTimeOf(iso){try{return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso))}catch{return ''}}
+function sum(rows,key){return rows.reduce((a,x)=>a+Number(x[key]||0),0)}
+function saleTotals(rows){
+  const esc=rows.filter(x=>x.product_type==='esc'),filt=rows.filter(x=>x.product_type==='filt');
+  const bruto=sum(rows,'total_value'),din=sum(rows.filter(x=>x.payment==='Dinheiro'),'total_value'),pix=sum(rows.filter(x=>x.payment==='PIX'),'total_value'),fiado=sum(rows.filter(x=>x.payment==='Fiado'),'total_value');
+  return {bruto,din,pix,fiado,esc:sum(esc,'qty'),filt:sum(filt,'qty'),escv:sum(esc,'total_value'),filtv:sum(filt,'total_value'),sacos:sum(rows,'qty')}
+}
+function selectedDayRows(){
+  const d=$('date-vendas').value,ini=$('time-start').value,fim=$('time-end').value;
+  return state.sales.filter(x=>localDateOf(x.sold_at)===d).filter(x=>{const h=localTimeOf(x.sold_at);return(!ini||h>=ini)&&(!fim||h<=fim)});
+}
+function selectedDayExpenses(){
+  const d=$('date-vendas').value,ini=$('time-start').value,fim=$('time-end').value;
+  return state.expenses.filter(x=>localDateOf(x.spent_at)===d).filter(x=>{const h=localTimeOf(x.spent_at);return(!ini||h>=ini)&&(!fim||h<=fim)});
+}
+function renderSales(){
+  const rows=selectedDayRows(),ex=selectedDayExpenses(),t=saleTotals(rows),saidas=sum(ex,'amount');
+  $('v-bruto').textContent=money(t.bruto);$('v-dinheiro').textContent=money(t.din);$('v-pix').textContent=money(t.pix);$('v-saidas').textContent=money(saidas);$('v-liquido').textContent=money(t.bruto-saidas);
+  $('v-escamas').textContent=t.esc+' sacos';$('v-filtrado').textContent=t.filt+' sacos';$('v-escamas-value').textContent=money(t.escv);$('v-filtrado-value').textContent=money(t.filtv);$('sales-count').textContent=rows.length;
+  $('scope-vendas').textContent=($('time-start').value||$('time-end').value)?'Vendas atuais · horário filtrado':'Vendas atuais · dia inteiro';
+  const body=$('sales-body');body.innerHTML='';
+  rows.sort((a,b)=>new Date(a.sold_at)-new Date(b.sold_at)).forEach(x=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${localTimeOf(x.sold_at)}</td><td><strong>${escapeHtml(x.client)}</strong></td><td>${x.product_type==='filt'?'Filtrado':'Escamas'}</td><td>${x.qty}</td><td><span class="pill ${x.payment==='PIX'?'pix':'money'}">${escapeHtml(x.payment)}</span></td><td><strong>${money(x.total_value)}</strong></td><td><button class="ghost danger" onclick="deleteSale('${x.id}')">Excluir</button></td>`;
+    body.appendChild(tr);
+  });
+  $('sales-empty').classList.toggle('hidden',rows.length>0);$('sales-body').parentElement.classList.toggle('hidden',rows.length===0);
+}
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+function addDays(dateStr,n){const d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
+function periodRange(dateStr,mode){
+  if(mode==='day')return [dateStr,dateStr];
+  const d=new Date(dateStr+'T12:00:00');
+  if(mode==='week'){const dow=d.getDay()||7;const start=addDays(dateStr,1-dow);return[start,addDays(start,6)]}
+  return [dateStr.slice(0,7)+'-01',new Date(Number(dateStr.slice(0,4)),Number(dateStr.slice(5,7)),0,12).toISOString().slice(0,10)];
+}
+function inRange(iso,a,b,type){const d=type==='spent'?localDateOf(iso.spent_at):localDateOf(iso.sold_at);return d>=a&&d<=b}
+function renderBook(){
+  const ref=$('date-caderno').value||today(),[a,b]=periodRange(ref,state.period);
+  const sales=state.sales.filter(x=>inRange(x,a,b,'sold')),expenses=state.expenses.filter(x=>inRange(x,a,b,'spent')),t=saleTotals(sales),desp=sum(expenses,'amount');
+  $('book-title').textContent=state.period==='day'?'Resumo do dia':state.period==='week'?'Resumo da semana':'Resumo do mês';
+  $('book-range').textContent=a===b?a:(a+' até '+b);
+  $('b-bruto').textContent=money(t.bruto);$('b-despesas').textContent=money(desp);$('b-liquido').textContent=money(t.bruto-desp);$('b-sacos').textContent=t.sacos+' sacos';$('b-escamas').textContent=t.esc+' sacos';$('b-filtrado').textContent=t.filt+' sacos';$('b-escamas-value').textContent=money(t.escv);$('b-filtrado-value').textContent=money(t.filtv);$('b-dinheiro').textContent=money(t.din);$('b-pix').textContent=money(t.pix);$('b-fiado').textContent=money(t.fiado);
+  const days=[];for(let d=a;d<=b;d=addDays(d,1)){const sr=sales.filter(x=>localDateOf(x.sold_at)===d),er=expenses.filter(x=>localDateOf(x.spent_at)===d);if(sr.length||er.length||state.period==='day'){const tt=saleTotals(sr),dd=sum(er,'amount');days.push({d,...tt,desp:dd,liq:tt.bruto-dd})}}
+  $('days-count').textContent=days.length+' dia(s) com movimento';$('daily-list').innerHTML=days.length?days.map(x=>`<div class="daily"><div class="date">${x.d.split('-').reverse().join('/')}</div><div><small>Sacos</small><b>${x.sacos}</b></div><div><small>Escamas</small><b>${x.esc}</b></div><div><small>Filtrado</small><b>${x.filt}</b></div><div><small>Bruto</small><b>${money(x.bruto)}</b></div><div><small>Despesas</small><b>${money(x.desp)}</b></div><div><small>Líquido</small><b>${money(x.liq)}</b></div></div>`).join(''):'<div class="empty">Sem movimento no período.</div>';
+}
+function renderExpenses(){
+  const d=$('date-saidas').value,rows=state.expenses.filter(x=>localDateOf(x.spent_at)===d).sort((a,b)=>new Date(a.spent_at)-new Date(b.spent_at));
+  $('e-total').textContent=money(sum(rows,'amount'));$('expense-count').textContent=rows.length+' registro(s)';
+  $('expense-body').innerHTML=rows.map(x=>`<tr><td>${localTimeOf(x.spent_at)}</td><td><strong>${escapeHtml(x.description)}</strong></td><td>${money(x.amount)}</td><td><button class="ghost danger" onclick="deleteExpense('${x.id}')">Excluir</button></td></tr>`).join('');
+  $('expense-empty').classList.toggle('hidden',rows.length>0);$('expense-body').parentElement.classList.toggle('hidden',rows.length===0);
+}
+async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});if(r.status===401){location.href='/__panel/login';throw new Error('Sessão encerrada')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Erro no servidor');return j}
+async function loadAll(){
+  try{const [s,e]=await Promise.all([api('/api/controle/sales'),api('/api/controle/expenses')]);state.sales=s.sales||[];state.expenses=e.expenses||[];renderSales();renderBook();renderExpenses()}catch(e){toast(e.message)}
+}
+async function saveSale(){
+  const body={client:$('s-client').value.trim(),product_type:$('s-type').value,qty:Number($('s-qty').value),payment:$('s-payment').value,unit_price:Number($('s-price').value),date:$('s-date').value,time:$('s-time').value};
+  if(!body.client||!body.qty||body.qty<1)return toast('Informe cliente e quantidade.');
+  try{await api('/api/controle/sales',{method:'POST',body:JSON.stringify(body)});closeModal('sale-modal');toast('Venda registrada.');await loadAll()}catch(e){toast(e.message)}
+}
+async function saveExpense(){
+  const body={description:$('e-desc').value.trim(),amount:Number($('e-amount').value),date:$('e-date').value,time:$('e-time').value};
+  if(!body.description||!body.amount||body.amount<=0)return toast('Informe descrição e valor.');
+  try{await api('/api/controle/expenses',{method:'POST',body:JSON.stringify(body)});closeModal('expense-modal');toast('Saída registrada.');await loadAll()}catch(e){toast(e.message)}
+}
+async function deleteSale(id){if(!confirm('Excluir esta venda do movimento?'))return;try{await api('/api/controle/sales/'+encodeURIComponent(id),{method:'DELETE'});await loadAll();toast('Venda excluída.')}catch(e){toast(e.message)}}
+async function deleteExpense(id){if(!confirm('Excluir esta saída?'))return;try{await api('/api/controle/expenses/'+encodeURIComponent(id),{method:'DELETE'});await loadAll();toast('Saída excluída.')}catch(e){toast(e.message)}}
+['date-vendas','time-start','time-end'].forEach(id=>$(id).addEventListener('change',renderSales));
+$('date-caderno').addEventListener('change',renderBook);$('date-saidas').addEventListener('change',renderExpenses);
+document.querySelectorAll('[data-period]').forEach(b=>b.onclick=()=>{state.period=b.dataset.period;document.querySelectorAll('[data-period]').forEach(x=>x.classList.toggle('active',x===b));renderBook()});
+$('s-type').addEventListener('change',()=>{$('s-price').value=$('s-type').value==='filt'?13:7});
+const t=today();$('date-vendas').value=t;$('date-caderno').value=t;$('date-saidas').value=t;
+loadAll();
+</script>
+</body>
+</html>
