@@ -170,6 +170,7 @@ const LEGACY_SEED_PHONE = "5521991777811";
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/$/, "");
 const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/agent/reply");
 const AGENT_READ_TOKEN = String(process.env.AGENT_READ_TOKEN || "");
+const SALES_ASSISTANT_TOKEN = String(process.env.SALES_ASSISTANT_TOKEN || "").trim();
 const HELPER_TAFA_PHONE = String(process.env.HELPER_TAFA_PHONE || "").replace(/\D/g, "");
 const HELPER_MAIRA_PHONE = String(process.env.HELPER_MAIRA_PHONE || "").replace(/\D/g, "");
 const HELPER_TAFA_JID = String(process.env.HELPER_TAFA_JID || "").trim();
@@ -1410,6 +1411,56 @@ app.get("/api/agent/historico-dia", async (req, res) => {
   } catch (e) {
     console.error("Falha no histórico diário do agente:", e?.message || e);
     res.status(500).json({ error:String(e?.message || e) });
+  }
+});
+
+function salesAssistantAuthorized(req){
+  const supplied=String(req.headers["x-sales-assistant-token"]||"");
+  return !!SALES_ASSISTANT_TOKEN && supplied===SALES_ASSISTANT_TOKEN;
+}
+
+app.get("/api/assistant/vendas-dia",(req,res)=>{
+  try{
+    if(!salesAssistantAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
+    const data=String(req.query?.data||"").trim();
+    const targetDate=/^\d{4}-\d{2}-\d{2}$/.test(data)?data:new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const norm=(v,fallback)=>{const m=String(v||"").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);if(!m)return fallback;return String(Math.min(23,+m[1])).padStart(2,"0")+":"+String(Math.min(59,+m[2])).padStart(2,"0")+":"+String(Math.min(59,+(m[3]||0))).padStart(2,"0")};
+    const inicio=norm(req.query?.inicio,"00:00:00"),fim=norm(req.query?.fim,"23:59:59");
+    const vendas=listSalesByLocalDateRange(targetDate,inicio,fim);
+    return res.json({ok:true,data:targetDate,faixa:{inicio,fim},total:vendas.length,vendas});
+  }catch(e){
+    console.error("Falha ao consultar vendas do assistente:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"});
+  }
+});
+
+app.post("/api/assistant/vendas-pendentes",(req,res)=>{
+  try{
+    if(!salesAssistantAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
+    const date=String(req.body?.data||"").trim();
+    const time=String(req.body?.hora||"").trim();
+    const client=String(req.body?.cliente||"Pendente").trim().slice(0,120)||"Pendente";
+    const qty=Number(req.body?.qtd);
+    const product=String(req.body?.tipo||"").trim().toLowerCase();
+    const payment=String(req.body?.pagamento||"Pendente").trim().slice(0,80)||"Pendente";
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({error:"data inválida; use AAAA-MM-DD"});
+    if(!/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(time)) return res.status(400).json({error:"hora inválida; use HH:MM"});
+    if(!Number.isInteger(qty)||qty<1||qty>10000) return res.status(400).json({error:"qtd deve ser um número inteiro entre 1 e 10000"});
+    if(!["esc","filt"].includes(product)) return res.status(400).json({error:"tipo deve ser esc ou filt"});
+    const hhmmss=time.length===5?time+":00":time;
+    const receivedAt=date+"T"+hhmmss+"-03:00";
+    if(!Number.isFinite(Date.parse(receivedAt))) return res.status(400).json({error:"data e hora inválidas"});
+    const id="assistant:"+crypto.randomUUID();
+    const result=upsertPendingSale({
+      remote_id:id,remote_key:id,message_id:id,recebido_em:receivedAt,
+      cliente:client,qtd:qty,tipo:product,pagamento:payment,
+      confianca:"manual",remetente:"",nome_remetente:""
+    });
+    if(result!=="inserted") return res.status(500).json({error:"Não foi possível incluir a venda pendente",result});
+    return res.status(201).json({ok:true,status:"pending",venda:{remote_id:id,data:date,hora:hhmmss,cliente:client,qtd:qty,tipo:product,pagamento:payment}});
+  }catch(e){
+    console.error("Falha ao incluir venda pendente do assistente:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao incluir venda"});
   }
 });
 
