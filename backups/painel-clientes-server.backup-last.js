@@ -7,6 +7,15 @@ const { interpretarVendas } = require("./sales-parser.js");
 
 const app = express();
 app.use(express.json({ limit: "64mb" }));
+
+app.use("/api/gelo",(req,res,next)=>{
+  res.set("Access-Control-Allow-Origin","*");
+  res.set("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  res.set("Access-Control-Allow-Headers","Content-Type");
+  res.set("Cache-Control","no-store");
+  if(req.method==="OPTIONS")return res.sendStatus(204);
+  next();
+});
 app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 
 const PANEL_SESSION_COOKIE="gelo_panel_session";
@@ -125,6 +134,8 @@ function panelSessionAuth(req,res,next){
     req.path.startsWith("/api/gelo/") ||
     req.path.startsWith("/api/webhooks/") ||
     req.path.startsWith("/api/agent/") ||
+    req.path === "/api/assistant/vendas-dia" ||
+    req.path === "/api/assistant/vendas-pendentes" ||
     req.path === "/api/health" ||
     req.path === "/__panel/login";
 
@@ -161,6 +172,7 @@ const LEGACY_SEED_PHONE = "5521991777811";
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/$/, "");
 const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/agent/reply");
 const AGENT_READ_TOKEN = String(process.env.AGENT_READ_TOKEN || "");
+const SALES_ASSISTANT_TOKEN = String(process.env.SALES_ASSISTANT_TOKEN || "").trim();
 const HELPER_TAFA_PHONE = String(process.env.HELPER_TAFA_PHONE || "").replace(/\D/g, "");
 const HELPER_MAIRA_PHONE = String(process.env.HELPER_MAIRA_PHONE || "").replace(/\D/g, "");
 const HELPER_TAFA_JID = String(process.env.HELPER_TAFA_JID || "").trim();
@@ -323,6 +335,37 @@ if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 initSalesQueue();
 logRecentSalesForAgent(2);
+setTimeout(async()=>{
+  try{
+    const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const rawToday=readWuzapiHistory().filter(x=>isAuthorizedHistoryEntry(x)&&localDate(x?.timestamp)===today);
+    for(const m of rawToday){
+      const texto=String(m?.transcricao||m?.texto||"").trim();
+      console.log("AUTHORIZED_HISTORY_ROW",JSON.stringify({
+        message_id:String(m?.message_id||""),
+        timestamp:String(m?.timestamp||""),
+        pessoa:String(m?.pessoa||""),
+        sender:String(m?.sender_alt||m?.sender_jid||""),
+        tipo:String(m?.tipo||""),
+        texto
+      }));
+      if(texto){
+        try{
+          const r=ingestSaleTextDirect({
+            messageId:String(m?.message_id||""),
+            text:texto,
+            timestamp:String(m?.timestamp||new Date().toISOString()),
+            sender:String(m?.sender_alt||m?.sender_jid||""),
+            senderName:String(m?.pessoa||"Remetente")
+          });
+          console.log("AUTHORIZED_HISTORY_REINGEST",JSON.stringify({message_id:String(m?.message_id||""),...r}));
+        }catch(e){console.error("Falha ao reprocessar histórico autorizado:",e?.message||e)}
+      }
+    }
+    const recovered=await backfillAuthorizedAudioForDate(today);
+    console.log("AUTHORIZED_AUDIO_RECOVERY",JSON.stringify({date:today,...recovered}));
+  }catch(e){console.error("Falha ao preparar histórico autorizado do dia:",e?.message||e)}
+},5000);
 
 function atomicWriteFile(filePath, content){
   const tmp=filePath+".tmp-"+process.pid+"-"+Date.now();
@@ -725,6 +768,16 @@ async function processAuthorizedHistoricalAudio({token,messageId,timestamp,perso
     is_group:false,
     origem:"wuzapi-history"
   });
+  try{
+    const r=ingestSaleTextDirect({
+      messageId:id,
+      text:transcricao,
+      timestamp:String(timestamp||new Date().toISOString()),
+      sender:senderPhone+"@s.whatsapp.net",
+      senderName:String(person||"Remetente")
+    });
+    console.log("AUDIO_HISTORY_REINGEST",JSON.stringify({message_id:id,...r}));
+  }catch(e){console.error("Falha ao relançar transcrição histórica:",e?.message||e)}
   return {ok:true,transcricao,interpretacao:result?.interpretacao||null};
 }
 async function backfillAuthorizedAudioForDate(targetDate, suppliedToken="") {
@@ -1363,6 +1416,56 @@ app.get("/api/agent/historico-dia", async (req, res) => {
   }
 });
 
+function salesAssistantAuthorized(req){
+  const supplied=String(req.headers["x-sales-assistant-token"]||"");
+  return !!SALES_ASSISTANT_TOKEN && safeTextEqual(supplied,SALES_ASSISTANT_TOKEN);
+}
+
+app.get("/api/assistant/vendas-dia",(req,res)=>{
+  try{
+    if(!salesAssistantAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
+    const data=String(req.query?.data||"").trim();
+    const targetDate=/^\d{4}-\d{2}-\d{2}$/.test(data)?data:new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const norm=(v,fallback)=>{const m=String(v||"").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);if(!m)return fallback;return String(Math.min(23,+m[1])).padStart(2,"0")+":"+String(Math.min(59,+m[2])).padStart(2,"0")+":"+String(Math.min(59,+(m[3]||0))).padStart(2,"0")};
+    const inicio=norm(req.query?.inicio,"00:00:00"),fim=norm(req.query?.fim,"23:59:59");
+    const vendas=listSalesByLocalDateRange(targetDate,inicio,fim);
+    return res.json({ok:true,data:targetDate,faixa:{inicio,fim},total:vendas.length,vendas});
+  }catch(e){
+    console.error("Falha ao consultar vendas do assistente:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"});
+  }
+});
+
+app.post("/api/assistant/vendas-pendentes",(req,res)=>{
+  try{
+    if(!salesAssistantAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
+    const date=String(req.body?.data||"").trim();
+    const time=String(req.body?.hora||"").trim();
+    const client=String(req.body?.cliente||"Pendente").trim().slice(0,120)||"Pendente";
+    const qty=Number(req.body?.qtd);
+    const product=String(req.body?.tipo||"").trim().toLowerCase();
+    const payment=String(req.body?.pagamento||"Pendente").trim().slice(0,80)||"Pendente";
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({error:"data inválida; use AAAA-MM-DD"});
+    if(!/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(time)) return res.status(400).json({error:"hora inválida; use HH:MM"});
+    if(!Number.isInteger(qty)||qty<1||qty>10000) return res.status(400).json({error:"qtd deve ser um número inteiro entre 1 e 10000"});
+    if(!["esc","filt"].includes(product)) return res.status(400).json({error:"tipo deve ser esc ou filt"});
+    const hhmmss=time.length===5?time+":00":time;
+    const receivedAt=date+"T"+hhmmss+"-03:00";
+    if(!Number.isFinite(Date.parse(receivedAt))) return res.status(400).json({error:"data e hora inválidas"});
+    const id="assistant:"+crypto.randomUUID();
+    const result=upsertPendingSale({
+      remote_id:id,remote_key:id,message_id:id,recebido_em:receivedAt,
+      cliente:client,qtd:qty,tipo:product,pagamento:payment,
+      confianca:"manual",remetente:"",nome_remetente:""
+    });
+    if(result!=="inserted") return res.status(500).json({error:"Não foi possível incluir a venda pendente",result});
+    return res.status(201).json({ok:true,status:"pending",venda:{remote_id:id,data:date,hora:hhmmss,cliente:client,qtd:qty,tipo:product,pagamento:payment}});
+  }catch(e){
+    console.error("Falha ao incluir venda pendente do assistente:",e?.message||e);
+    return res.status(500).json({ok:false,error:e?.message||"Falha ao incluir venda"});
+  }
+});
+
 app.get("/api/agent/vendas-dia", (req,res)=>{
   try{
     if(!agentAuthorized(req)) return res.status(401).json({error:"Não autorizado"});
@@ -1651,7 +1754,7 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       msg?.videoMessage?.caption ||
       "";
 
-    appendWuzapiHistory({
+    const rawMainEntry={
       message_id:String(info?.ID || info?.Id || info?.id || ""),
       timestamp:String(info?.Timestamp || new Date().toISOString()),
       pessoa:String(info?.PushName || "").trim() || "Remetente",
@@ -1664,7 +1767,18 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       is_from_me:info?.IsFromMe === true,
       is_group:info?.IsGroup === true,
       origem:"wuzapi"
-    });
+    };
+    appendWuzapiHistory(rawMainEntry);
+    if(isAuthorizedHistoryEntry(rawMainEntry)){
+      console.log("AUTHORIZED_RAW_MESSAGE_SAVED",JSON.stringify({
+        message_id:rawMainEntry.message_id,
+        timestamp:rawMainEntry.timestamp,
+        pessoa:rawMainEntry.pessoa,
+        sender:rawMainEntry.sender_alt||rawMainEntry.sender_jid,
+        tipo:rawMainEntry.tipo,
+        texto:rawMainEntry.texto
+      }));
+    }
 
     const directEntry={
       message_id:String(info?.ID || info?.Id || info?.id || ""),
