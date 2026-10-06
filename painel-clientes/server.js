@@ -332,6 +332,24 @@ if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 initSalesQueue();
 logRecentSalesForAgent(2);
+setTimeout(async()=>{
+  try{
+    const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const rawToday=readWuzapiHistory().filter(x=>isAuthorizedHistoryEntry(x)&&localDate(x?.timestamp)===today);
+    for(const m of rawToday){
+      console.log("AUTHORIZED_HISTORY_ROW",JSON.stringify({
+        message_id:String(m?.message_id||""),
+        timestamp:String(m?.timestamp||""),
+        pessoa:String(m?.pessoa||""),
+        sender:String(m?.sender_alt||m?.sender_jid||""),
+        tipo:String(m?.tipo||""),
+        texto:String(m?.transcricao||m?.texto||"")
+      }));
+    }
+    const recovered=await backfillAuthorizedAudioForDate(today);
+    console.log("AUTHORIZED_AUDIO_RECOVERY",JSON.stringify({date:today,...recovered}));
+  }catch(e){console.error("Falha ao preparar histórico autorizado do dia:",e?.message||e)}
+},5000);
 
 function atomicWriteFile(filePath, content){
   const tmp=filePath+".tmp-"+process.pid+"-"+Date.now();
@@ -1660,7 +1678,7 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       msg?.videoMessage?.caption ||
       "";
 
-    appendWuzapiHistory({
+    const rawMainEntry={
       message_id:String(info?.ID || info?.Id || info?.id || ""),
       timestamp:String(info?.Timestamp || new Date().toISOString()),
       pessoa:String(info?.PushName || "").trim() || "Remetente",
@@ -1673,7 +1691,18 @@ app.post("/api/webhooks/wuzapi/external-gelo-tutoia", async (req, res) => {
       is_from_me:info?.IsFromMe === true,
       is_group:info?.IsGroup === true,
       origem:"wuzapi"
-    });
+    };
+    appendWuzapiHistory(rawMainEntry);
+    if(isAuthorizedHistoryEntry(rawMainEntry)){
+      console.log("AUTHORIZED_RAW_MESSAGE_SAVED",JSON.stringify({
+        message_id:rawMainEntry.message_id,
+        timestamp:rawMainEntry.timestamp,
+        pessoa:rawMainEntry.pessoa,
+        sender:rawMainEntry.sender_alt||rawMainEntry.sender_jid,
+        tipo:rawMainEntry.tipo,
+        texto:rawMainEntry.texto
+      }));
+    }
 
     const directEntry={
       message_id:String(info?.ID || info?.Id || info?.id || ""),
