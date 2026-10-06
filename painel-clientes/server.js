@@ -337,14 +337,27 @@ setTimeout(async()=>{
     const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
     const rawToday=readWuzapiHistory().filter(x=>isAuthorizedHistoryEntry(x)&&localDate(x?.timestamp)===today);
     for(const m of rawToday){
+      const texto=String(m?.transcricao||m?.texto||"").trim();
       console.log("AUTHORIZED_HISTORY_ROW",JSON.stringify({
         message_id:String(m?.message_id||""),
         timestamp:String(m?.timestamp||""),
         pessoa:String(m?.pessoa||""),
         sender:String(m?.sender_alt||m?.sender_jid||""),
         tipo:String(m?.tipo||""),
-        texto:String(m?.transcricao||m?.texto||"")
+        texto
       }));
+      if(texto){
+        try{
+          const r=ingestSaleTextDirect({
+            messageId:String(m?.message_id||""),
+            text:texto,
+            timestamp:String(m?.timestamp||new Date().toISOString()),
+            sender:String(m?.sender_alt||m?.sender_jid||""),
+            senderName:String(m?.pessoa||"Remetente")
+          });
+          console.log("AUTHORIZED_HISTORY_REINGEST",JSON.stringify({message_id:String(m?.message_id||""),...r}));
+        }catch(e){console.error("Falha ao reprocessar histórico autorizado:",e?.message||e)}
+      }
     }
     const recovered=await backfillAuthorizedAudioForDate(today);
     console.log("AUTHORIZED_AUDIO_RECOVERY",JSON.stringify({date:today,...recovered}));
@@ -752,6 +765,16 @@ async function processAuthorizedHistoricalAudio({token,messageId,timestamp,perso
     is_group:false,
     origem:"wuzapi-history"
   });
+  try{
+    const r=ingestSaleTextDirect({
+      messageId:id,
+      text:transcricao,
+      timestamp:String(timestamp||new Date().toISOString()),
+      sender:senderPhone+"@s.whatsapp.net",
+      senderName:String(person||"Remetente")
+    });
+    console.log("AUDIO_HISTORY_REINGEST",JSON.stringify({message_id:id,...r}));
+  }catch(e){console.error("Falha ao relançar transcrição histórica:",e?.message||e)}
   return {ok:true,transcricao,interpretacao:result?.interpretacao||null};
 }
 async function backfillAuthorizedAudioForDate(targetDate, suppliedToken="") {
