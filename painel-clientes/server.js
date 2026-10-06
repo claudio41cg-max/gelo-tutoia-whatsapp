@@ -134,6 +134,8 @@ function panelSessionAuth(req,res,next){
     req.path.startsWith("/api/gelo/") ||
     req.path.startsWith("/api/webhooks/") ||
     req.path.startsWith("/api/agent/") ||
+    req.path === "/api/assistant/vendas-dia" ||
+    req.path === "/api/assistant/vendas-pendentes" ||
     req.path === "/api/health" ||
     req.path === "/__panel/login";
 
@@ -1416,7 +1418,7 @@ app.get("/api/agent/historico-dia", async (req, res) => {
 
 function salesAssistantAuthorized(req){
   const supplied=String(req.headers["x-sales-assistant-token"]||"");
-  return !!SALES_ASSISTANT_TOKEN && supplied===SALES_ASSISTANT_TOKEN;
+  return !!SALES_ASSISTANT_TOKEN && safeTextEqual(supplied,SALES_ASSISTANT_TOKEN);
 }
 
 app.get("/api/assistant/vendas-dia",(req,res)=>{
