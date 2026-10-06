@@ -328,12 +328,48 @@ app.get("/api/gelo/inbox", (req, res) => {
   }
 });
 
+
+app.get("/api/controle/sales",(req,res)=>{
+  res.set("Cache-Control","no-store");
+  try{return res.json({ok:true,sales:listControlSales()})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"})}
+});
+app.post("/api/controle/sales",(req,res)=>{
+  res.set("Cache-Control","no-store");
+  try{const id=insertControlSale(req.body||{});return res.json({ok:true,id})}
+  catch(e){return res.status(400).json({ok:false,error:e?.message||"Falha ao registrar venda"})}
+});
+app.delete("/api/controle/sales/:id",(req,res)=>{
+  try{const now=Date.now();const r=salesDb.prepare("UPDATE control_sales SET status='deleted',updated_ms=? WHERE id=?").run(now,String(req.params.id));return res.json({ok:true,changed:Number(r.changes||0)})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao excluir venda"})}
+});
+app.get("/api/controle/expenses",(req,res)=>{
+  res.set("Cache-Control","no-store");
+  try{return res.json({ok:true,expenses:listControlExpenses()})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar despesas"})}
+});
+app.post("/api/controle/expenses",(req,res)=>{
+  res.set("Cache-Control","no-store");
+  try{const id=insertControlExpense(req.body||{});return res.json({ok:true,id})}
+  catch(e){return res.status(400).json({ok:false,error:e?.message||"Falha ao registrar saída"})}
+});
+app.delete("/api/controle/expenses/:id",(req,res)=>{
+  try{const now=Date.now();const r=salesDb.prepare("UPDATE control_expenses SET status='deleted',updated_ms=? WHERE id=?").run(now,String(req.params.id));return res.json({ok:true,changed:Number(r.changes||0)})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao excluir saída"})}
+});
+app.post("/api/agent/controle/sales",(req,res)=>{
+  if(!agentAuthorized(req))return res.status(401).json({ok:false,error:"Não autorizado"});
+  try{const id=insertControlSale({...req.body,source:"assistant"});return res.json({ok:true,id})}
+  catch(e){return res.status(400).json({ok:false,error:e?.message||"Falha ao lançar venda"})}
+});
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 if (!fs.existsSync(EXTERNAL_STATE_FILE)) fs.writeFileSync(EXTERNAL_STATE_FILE, JSON.stringify({ aiEnabled: false, manualMode: true }, null, 2));
 if (!fs.existsSync(WUZAPI_HISTORY_FILE)) fs.writeFileSync(WUZAPI_HISTORY_FILE, "[]");
 if (!fs.existsSync(SALES_SYNC_STATE_FILE)) fs.writeFileSync(SALES_SYNC_STATE_FILE, JSON.stringify({ date:"", cutoff:0 }, null, 2));
 initSalesQueue();
+seedControlLedger();
 logRecentSalesForAgent(2);
 setTimeout(async()=>{
   try{
@@ -404,9 +440,130 @@ function initSalesQueue(){
     );
     CREATE INDEX IF NOT EXISTS idx_sales_queue_status_received ON sales_queue(status, received_ms);
     CREATE INDEX IF NOT EXISTS idx_sales_queue_message ON sales_queue(message_id);
+
+    CREATE TABLE IF NOT EXISTS control_sales(
+      id TEXT PRIMARY KEY,
+      message_id TEXT,
+      sold_ms INTEGER NOT NULL,
+      sold_at TEXT NOT NULL,
+      client TEXT NOT NULL,
+      qty INTEGER NOT NULL,
+      product_type TEXT NOT NULL,
+      payment TEXT NOT NULL,
+      unit_price REAL NOT NULL,
+      total_value REAL NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_ms INTEGER NOT NULL,
+      updated_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_control_sales_sold ON control_sales(status,sold_ms);
+
+    CREATE TABLE IF NOT EXISTS control_expenses(
+      id TEXT PRIMARY KEY,
+      spent_ms INTEGER NOT NULL,
+      spent_at TEXT NOT NULL,
+      description TEXT NOT NULL,
+      amount REAL NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_ms INTEGER NOT NULL,
+      updated_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_control_expenses_spent ON control_expenses(status,spent_ms);
   `);
   console.log("SALES_QUEUE_SQLITE_READY", SALES_DB_FILE);
 }
+
+function controlIso(date,time){
+  const d=String(date||"").trim();
+  const t=String(time||"00:00").trim()||"00:00";
+  const ms=Date.parse(d+"T"+t+":00-03:00");
+  if(!d||!Number.isFinite(ms))throw new Error("Data ou horário inválido");
+  return {ms,iso:new Date(ms).toISOString()};
+}
+function controlPrice(client,type){
+  if(type==="filt")return 13;
+  const n=String(client||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  if(/\b(para|tiago|thiago)\b/.test(n))return 6;
+  if(/padaria bmg/.test(n)||/chatuba/.test(n))return 8;
+  if(/cliente rua/.test(n))return 10;
+  return 7;
+}
+function insertControlSale(input={},forcedId=""){
+  if(!salesDb)throw new Error("Banco indisponível");
+  const client=String(input.client||input.cliente||"").trim();
+  const type=String(input.product_type||input.tipo||"").trim()==="filt"?"filt":"esc";
+  const qty=Math.max(1,Number(input.qty||input.qtd||0)||0);
+  const payment=["Dinheiro","PIX","Fiado"].includes(String(input.payment||input.pagamento||""))?String(input.payment||input.pagamento):"Dinheiro";
+  if(!client||!qty)throw new Error("Cliente e quantidade são obrigatórios");
+  let soldMs,soldAt;
+  if(input.sold_at){
+    soldMs=Date.parse(input.sold_at);soldAt=new Date(soldMs).toISOString();
+  }else{
+    const d=controlIso(input.date||localDate(new Date().toISOString()),input.time||localTime(new Date().toISOString()).slice(0,5));
+    soldMs=d.ms;soldAt=d.iso;
+  }
+  const unit=Number(input.unit_price);
+  const unitPrice=Number.isFinite(unit)&&unit>=0?unit:controlPrice(client,type);
+  const total=Number((unitPrice*qty).toFixed(2));
+  const now=Date.now(),id=forcedId||String(input.id||"")||("manual:"+crypto.randomUUID());
+  salesDb.prepare(`INSERT OR IGNORE INTO control_sales(
+    id,message_id,sold_ms,sold_at,client,qty,product_type,payment,unit_price,total_value,source,status,created_ms,updated_ms
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,'active',?,?)`).run(
+    id,String(input.message_id||""),soldMs,soldAt,client,qty,type,payment,unitPrice,total,String(input.source||"manual"),now,now
+  );
+  return id;
+}
+function insertControlExpense(input={},forcedId=""){
+  if(!salesDb)throw new Error("Banco indisponível");
+  const description=String(input.description||"").trim(),amount=Number(input.amount||0);
+  if(!description||!Number.isFinite(amount)||amount<=0)throw new Error("Descrição e valor são obrigatórios");
+  let spentMs,spentAt;
+  if(input.spent_at){spentMs=Date.parse(input.spent_at);spentAt=new Date(spentMs).toISOString();}
+  else{const d=controlIso(input.date||localDate(new Date().toISOString()),input.time||localTime(new Date().toISOString()).slice(0,5));spentMs=d.ms;spentAt=d.iso;}
+  const now=Date.now(),id=forcedId||("expense:"+crypto.randomUUID());
+  salesDb.prepare(`INSERT OR IGNORE INTO control_expenses(
+    id,spent_ms,spent_at,description,amount,source,status,created_ms,updated_ms
+  ) VALUES(?,?,?,?,?,?,'active',?,?)`).run(id,spentMs,spentAt,description,amount,String(input.source||"manual"),now,now);
+  return id;
+}
+function listControlSales(){
+  if(!salesDb)return[];
+  return salesDb.prepare("SELECT * FROM control_sales WHERE status='active' ORDER BY sold_ms ASC").all().map(r=>({
+    id:r.id,message_id:r.message_id||"",sold_at:r.sold_at,client:r.client,qty:Number(r.qty)||0,product_type:r.product_type,
+    payment:r.payment,unit_price:Number(r.unit_price)||0,total_value:Number(r.total_value)||0,source:r.source||""
+  }));
+}
+function listControlExpenses(){
+  if(!salesDb)return[];
+  return salesDb.prepare("SELECT * FROM control_expenses WHERE status='active' ORDER BY spent_ms ASC").all().map(r=>({
+    id:r.id,spent_at:r.spent_at,description:r.description,amount:Number(r.amount)||0,source:r.source||""
+  }));
+}
+function seedControlLedger(){
+  const seed=[
+    ["sale-2026-10-06-peixeiro-0909","AC86734AC7BCD95BD06567AF7132FE15","2026-10-06T09:09:42-03:00","Peixeiro Rua",1,"esc","PIX",7],
+    ["sale-2026-10-06-perninha-0910","ACBAD486F62A62E14947C7FB929A7F63","2026-10-06T09:10:00-03:00","Alex Perninha",2,"esc","PIX",7],
+    ["sale-2026-10-06-para-0954","AC29F9FD41B13175D83F88EB53F252C8","2026-10-06T09:54:27-03:00","Pará",7,"esc","PIX",6],
+    ["sale-2026-10-06-thiago-0954","ACA9E5A584CA0C025DFB3E8860AC0898","2026-10-06T09:54:31-03:00","Thiago",2,"esc","PIX",6],
+    ["sale-2026-10-06-campinho-0954","ACD0ADC4DFB1F237861C1DD990357ECD","2026-10-06T09:54:40-03:00","Alex Campinho",2,"esc","PIX",7],
+    ["sale-2026-10-06-marcio-0954","ACED62DE6E10CD114D63E4D9C42DC99C","2026-10-06T09:54:53-03:00","Márcio",3,"esc","Dinheiro",7],
+    ["sale-2026-10-06-clinica-filt-0955","ACC06CF75F2D088CC13A6D1403ECC2EF","2026-10-06T09:55:11-03:00","Caldo de cana - Clínica da Família",1,"filt","Dinheiro",13],
+    ["sale-2026-10-06-clinica-esc-0955","ACC06CF75F2D088CC13A6D1403ECC2EF","2026-10-06T09:55:11-03:00","Caldo de cana - Clínica da Família",1,"esc","Dinheiro",7],
+    ["sale-2026-10-06-praca-filt-0955","AC42B7F7880E12A3F9E62FE5D5BF17E9","2026-10-06T09:55:24-03:00","Caldo de cana ao lado de Márcio",1,"filt","Dinheiro",13],
+    ["sale-2026-10-06-laranja-1010","AC098AB53C376FCF1DB2FB1CD7BE5DA6","2026-10-06T10:10:08-03:00","Laranja",10,"esc","Dinheiro",7],
+    ["sale-2026-10-06-padaria-1021","AC2673DB2764340B878F6588CDF199BA","2026-10-06T10:21:00-03:00","Padaria Paciência",8,"esc","PIX",7],
+    ["sale-2026-10-06-lilian-1052","AC48B74F959EA9BD1FC99B0A2240105F","2026-10-06T10:52:50-03:00","Lilian",4,"esc","PIX",7],
+    ["sale-2026-10-06-tia-1053","AC8E3FF93AE51EEC5A2C73C1B8D94F56","2026-10-06T10:53:14-03:00","Tia",1,"filt","Dinheiro",13],
+    ["sale-2026-10-06-custodio-1125","AC2EB49D9F92D64B9F74B273978B8ED3","2026-10-06T11:25:15-03:00","Custódio",2,"esc","PIX",7]
+  ];
+  for(const [id,message_id,sold_at,client,qty,product_type,payment,unit_price] of seed){
+    insertControlSale({message_id,sold_at,client,qty,product_type,payment,unit_price,source:"history-recovered"},id);
+  }
+  console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
+}
+
 function normalizeQueueTimestamp(v){
   if(v==null||v==="")return Date.now();
   if(typeof v==="number")return v<1e12?v*1000:v;
