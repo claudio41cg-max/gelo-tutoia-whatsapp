@@ -620,6 +620,32 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-02T18:00:00-03:00",description:"Ajudantes",amount:120,source:"manual-photo-import"},"expense-2026-10-02-ajudantes");
   insertControlExpense({spent_at:"2026-10-02T18:01:00-03:00",description:"GNV",amount:20,source:"manual-photo-import"},"expense-2026-10-02-gnv");
   insertControlExpense({spent_at:"2026-10-03T18:00:00-03:00",description:"Ajudante",amount:120,source:"manual-photo-import"},"expense-2026-10-03-ajudante");
+  const seed0310=[
+    ["manual-2026-10-03-alex-rua22","2026-10-03T12:00:00-03:00","Alex Rua 22",4,"esc","PIX",7],
+    ["manual-2026-10-03-marcelo","2026-10-03T12:01:00-03:00","Marcelo",1,"filt","PIX",13],
+    ["manual-2026-10-03-para","2026-10-03T12:02:00-03:00","Peixaria Pará",8,"esc","PIX",6],
+    ["manual-2026-10-03-tiago","2026-10-03T12:03:00-03:00","Peixaria Tiago",2,"esc","PIX",6],
+
+    ["manual-2026-10-03-ivan-a","2026-10-03T12:04:00-03:00","Ivan",3,"esc","Dinheiro",7],
+    ["manual-2026-10-03-ivan-b","2026-10-03T12:05:00-03:00","Ivan",3,"esc","PIX",7],
+    ["manual-2026-10-03-ivan-c","2026-10-03T12:06:00-03:00","Ivan",5,"esc","Dinheiro",7],
+
+    ["manual-2026-10-03-marcio","2026-10-03T12:07:00-03:00","Márcio",2,"esc","Dinheiro",7],
+    ["manual-2026-10-03-inhoaiba-barraca-azul","2026-10-03T12:08:00-03:00","Inhoaíba Barraca Azul",1,"filt","Dinheiro",13],
+    ["manual-2026-10-03-padaria-paciencia","2026-10-03T12:09:00-03:00","Padaria Paciência",12,"esc","PIX",7],
+    ["manual-2026-10-03-lilian","2026-10-03T12:10:00-03:00","Lilian",3,"esc","Dinheiro",7],
+
+    ["manual-2026-10-03-churrasco-lilian","2026-10-03T12:11:00-03:00","Churrasco Lilian",1,"esc","PIX",7],
+    ["manual-2026-10-03-churrasco-tia","2026-10-03T12:12:00-03:00","Churrasco Tia",1,"esc","PIX",7],
+    ["manual-2026-10-03-sr-gilson","2026-10-03T12:13:00-03:00","Sr. Gilson",2,"filt","PIX",13],
+
+    ["manual-2026-10-03-kinho-esc","2026-10-03T12:14:00-03:00","Kinho Sapateiro",8,"esc","Dinheiro",7],
+    ["manual-2026-10-03-kinho-filt5","2026-10-03T12:15:00-03:00","Kinho Sapateiro",8,"filt","Dinheiro",5]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0310){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-photo-import"},id);
+  }
+
   insertControlExpense({spent_at:"2026-10-03T18:01:00-03:00",description:"GNV",amount:20,source:"manual-photo-import"},"expense-2026-10-03-gnv");
   console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
 }
