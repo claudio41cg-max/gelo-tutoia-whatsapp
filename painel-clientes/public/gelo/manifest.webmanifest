@@ -1,0 +1,21 @@
+{
+  "name": "Gelo Tutóia",
+  "short_name": "Gelo Tutóia",
+  "description": "Controle de vendas, caderno e saídas do Gelo Tutóia.",
+  "id": "/gelo/",
+  "start_url": "/gelo/",
+  "scope": "/gelo/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#f7f5ef",
+  "theme_color": "#f7f5ef",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/gelo/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
