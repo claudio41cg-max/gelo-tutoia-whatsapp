@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f7f5ef">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Gelo Tutóia">
+<link rel="manifest" href="/controle-manifest.webmanifest">
+<link rel="icon" href="/icons/gelo-tutoia.svg" type="image/svg+xml">
 <title>Gelo Tutóia · Controle de vendas</title>
 <style>
 :root{
@@ -243,6 +249,21 @@ $('date-caderno').addEventListener('change',renderBook);$('date-saidas').addEven
 document.querySelectorAll('[data-period]').forEach(b=>b.onclick=()=>{state.period=b.dataset.period;document.querySelectorAll('[data-period]').forEach(x=>x.classList.toggle('active',x===b));renderBook()});
 $('s-type').addEventListener('change',()=>{$('s-price').value=$('s-type').value==='filt'?13:7});
 const t=today();$('date-vendas').value=t;$('date-caderno').value=t;$('date-saidas').value=t;
+
+function openHashView(){
+  const v=location.hash.replace('#','');
+  if(['vendas','caderno','saidas'].includes(v))showView(v);
+}
+window.addEventListener('hashchange',openHashView);
+openHashView();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/controle-sw.js',{scope:'/'})
+      .catch(err=>console.warn('PWA service worker:',err));
+  });
+}
+
 loadAll();
 </script>
 </body>
