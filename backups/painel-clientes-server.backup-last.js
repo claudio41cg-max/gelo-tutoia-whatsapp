@@ -678,6 +678,29 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:01:00-03:00",description:"GNV",amount:30,source:"manual-user-import"},"expense-2026-10-04-gnv");
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
+
+  const seed0710=[
+    ["manual-2026-10-07-padaria-bmg","2026-10-07T09:42:12-03:00","Padaria BMG",2,"esc","Dinheiro",8],
+    ["manual-2026-10-07-marcelo","2026-10-07T09:42:19-03:00","Marcelo",2,"filt","Dinheiro",13],
+    ["manual-2026-10-07-alex-perninha","2026-10-07T09:42:41-03:00","Alex Perninha",3,"esc","PIX",7],
+    ["manual-2026-10-07-para","2026-10-07T09:42:49-03:00","Pará",5,"esc","PIX",6],
+    ["manual-2026-10-07-tiago","2026-10-07T09:42:59-03:00","Tiago",3,"esc","PIX",6],
+    ["manual-2026-10-07-alex-campinho","2026-10-07T09:43:12-03:00","Alex Campinho",1,"esc","PIX",7],
+    ["manual-2026-10-07-barraca-sacolao","2026-10-07T09:44:12-03:00","Barraca Caldo de Cana Inhoaíba/Sacolão",1,"filt","Dinheiro",13],
+    ["manual-2026-10-07-marcio","2026-10-07T09:44:23-03:00","Márcio",4,"esc","PIX",7],
+    ["manual-2026-10-07-caldo-clinica-filt","2026-10-07T10:00:00-03:00","Caldo do posto/clínica/esquerdo",1,"filt","PIX",13],
+    ["manual-2026-10-07-caldo-clinica-esc","2026-10-07T10:00:01-03:00","Caldo do posto/clínica/esquerdo",1,"esc","PIX",7],
+    ["manual-2026-10-07-marcelo-cosmos","2026-10-07T10:36:35-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-07-seu-luiz","2026-10-07T10:38:06-03:00","Seu Luiz",2,"esc","Dinheiro",8],
+    ["manual-2026-10-07-padaria-paciencia","2026-10-07T10:40:00-03:00","Padaria Paciência",8,"esc","PIX",7],
+    ["manual-2026-10-07-lilian","2026-10-07T10:41:00-03:00","Lilian",4,"esc","Dinheiro",7],
+    ["manual-2026-10-07-seu-gilson","2026-10-07T10:42:00-03:00","Seu Gilson",1,"filt","PIX",13],
+    ["manual-2026-10-07-custodio","2026-10-07T10:43:00-03:00","Custódio",2,"esc","PIX",7],
+    ["manual-2026-10-07-seu-pedro","2026-10-07T10:44:00-03:00","Seu Pedro",4,"esc","PIX",7]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0710){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
   console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
 }
 
