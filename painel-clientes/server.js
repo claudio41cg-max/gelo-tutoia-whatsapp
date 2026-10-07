@@ -597,6 +597,28 @@ function seedControlLedger(){
   for(const [id,message_id,sold_at,client,qty,product_type,payment,unit_price] of seed){
     insertControlSale({message_id,sold_at,client,qty,product_type,payment,unit_price,source:"history-recovered"},id);
   }
+  const seed0210=[
+    ["manual-2026-10-02-padaria-bmg","2026-10-02T12:00:00-03:00","Padaria BMG",2,"esc","Dinheiro",8],
+    ["manual-2026-10-02-marcelo","2026-10-02T12:01:00-03:00","Marcelo",1,"filt","Dinheiro",13],
+    ["manual-2026-10-02-alex-rua22","2026-10-02T12:02:00-03:00","Alex Rua 22",3,"esc","PIX",7],
+    ["manual-2026-10-02-tiago","2026-10-02T12:03:00-03:00","Peixaria Tiago",4,"esc","PIX",6],
+    ["manual-2026-10-02-para","2026-10-02T12:04:00-03:00","Peixaria Pará",7,"esc","PIX",6],
+    ["manual-2026-10-02-ivan","2026-10-02T12:05:00-03:00","Ivan",2,"esc","Dinheiro",7],
+    ["manual-2026-10-02-marcio","2026-10-02T12:06:00-03:00","Márcio",2,"esc","Dinheiro",7],
+    ["manual-2026-10-02-inhoaiba-barraca-azul","2026-10-02T12:07:00-03:00","Inhoaíba Barraca Azul",1,"filt","Dinheiro",13],
+    ["manual-2026-10-02-caldo-inhoaiba","2026-10-02T12:08:00-03:00","Caldo Inhoaíba",1,"filt","Dinheiro",10],
+    ["manual-2026-10-02-marcelo-cosmos","2026-10-02T12:09:00-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-02-luiz-peixaria","2026-10-02T12:10:00-03:00","Luiz Peixaria",1,"esc","Dinheiro",8],
+    ["manual-2026-10-02-padaria-paciencia","2026-10-02T12:11:00-03:00","Padaria Paciência",10,"esc","PIX",7],
+    ["manual-2026-10-02-lilian","2026-10-02T12:12:00-03:00","Lilian",3,"esc","Dinheiro",7],
+    ["manual-2026-10-02-sr-gilson","2026-10-02T12:13:00-03:00","Sr. Gilson",2,"filt","PIX",13],
+    ["manual-2026-10-02-custodio","2026-10-02T12:14:00-03:00","Custódio",2,"esc","PIX",7]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0210){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-photo-import"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-02T18:00:00-03:00",description:"Ajudantes",amount:120,source:"manual-photo-import"},"expense-2026-10-02-ajudantes");
+  insertControlExpense({spent_at:"2026-10-02T18:01:00-03:00",description:"GNV",amount:20,source:"manual-photo-import"},"expense-2026-10-02-gnv");
   console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
 }
 
