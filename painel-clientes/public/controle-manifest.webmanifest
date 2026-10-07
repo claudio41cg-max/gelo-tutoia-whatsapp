@@ -1,0 +1,38 @@
+{
+  "name": "Gelo Tutóia · Controle de vendas",
+  "short_name": "Gelo Tutóia",
+  "description": "Controle de vendas, caderno e saídas do Gelo Tutóia.",
+  "id": "/controle.html",
+  "start_url": "/controle.html",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#f7f5ef",
+  "theme_color": "#f7f5ef",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/gelo-tutoia.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Vendas do dia",
+      "short_name": "Vendas",
+      "url": "/controle.html#vendas"
+    },
+    {
+      "name": "Caderno de vendas",
+      "short_name": "Caderno",
+      "url": "/controle.html#caderno"
+    },
+    {
+      "name": "Saídas",
+      "short_name": "Saídas",
+      "url": "/controle.html#saidas"
+    }
+  ]
+}
