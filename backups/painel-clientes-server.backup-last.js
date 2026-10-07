@@ -134,6 +134,7 @@ function panelSessionAuth(req,res,next){
     req.path.startsWith("/api/gelo/") ||
     req.path.startsWith("/api/webhooks/") ||
     req.path.startsWith("/api/agent/") ||
+    req.path.startsWith("/api/control-bridge/") ||
     req.path === "/api/assistant/vendas-dia" ||
     req.path === "/api/assistant/vendas-pendentes" ||
     req.path === "/api/health" ||
@@ -173,6 +174,7 @@ const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || (process.env.RAILW
 const AI_AGENT_URL = String(process.env.AI_AGENT_URL || "https://gelo-tutoia-whatsapp.claudio41cg.workers.dev/api/agent/reply");
 const AGENT_READ_TOKEN = String(process.env.AGENT_READ_TOKEN || "");
 const SALES_ASSISTANT_TOKEN = String(process.env.SALES_ASSISTANT_TOKEN || "").trim();
+const CONTROL_BRIDGE_TOKEN = String(process.env.CONTROL_BRIDGE_TOKEN || "").trim();
 const HELPER_TAFA_PHONE = String(process.env.HELPER_TAFA_PHONE || "").replace(/\D/g, "");
 const HELPER_MAIRA_PHONE = String(process.env.HELPER_MAIRA_PHONE || "").replace(/\D/g, "");
 const HELPER_TAFA_JID = String(process.env.HELPER_TAFA_JID || "").trim();
@@ -328,6 +330,40 @@ app.get("/api/gelo/inbox", (req, res) => {
   }
 });
 
+
+function controlBridgeAuthorized(req){
+  const provided=String(req.headers["x-control-token"]||"");
+  return Boolean(CONTROL_BRIDGE_TOKEN)&&safeTextEqual(provided,CONTROL_BRIDGE_TOKEN);
+}
+app.use("/api/control-bridge",(req,res,next)=>{
+  if(!controlBridgeAuthorized(req))return res.status(401).json({ok:false,error:"Não autorizado"});
+  res.set("Cache-Control","no-store");
+  next();
+});
+app.get("/api/control-bridge/sales",(req,res)=>{
+  try{return res.json({ok:true,sales:listControlSales()})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"})}
+});
+app.post("/api/control-bridge/sales",(req,res)=>{
+  try{const id=insertControlSale({...req.body,source:req.body?.source||"standalone-pwa"});return res.json({ok:true,id})}
+  catch(e){return res.status(400).json({ok:false,error:e?.message||"Falha ao registrar venda"})}
+});
+app.delete("/api/control-bridge/sales/:id",(req,res)=>{
+  try{const now=Date.now();const r=salesDb.prepare("UPDATE control_sales SET status='deleted',updated_ms=? WHERE id=?").run(now,String(req.params.id));return res.json({ok:true,changed:Number(r.changes||0)})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao excluir venda"})}
+});
+app.get("/api/control-bridge/expenses",(req,res)=>{
+  try{return res.json({ok:true,expenses:listControlExpenses()})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar despesas"})}
+});
+app.post("/api/control-bridge/expenses",(req,res)=>{
+  try{const id=insertControlExpense({...req.body,source:req.body?.source||"standalone-pwa"});return res.json({ok:true,id})}
+  catch(e){return res.status(400).json({ok:false,error:e?.message||"Falha ao registrar saída"})}
+});
+app.delete("/api/control-bridge/expenses/:id",(req,res)=>{
+  try{const now=Date.now();const r=salesDb.prepare("UPDATE control_expenses SET status='deleted',updated_ms=? WHERE id=?").run(now,String(req.params.id));return res.json({ok:true,changed:Number(r.changes||0)})}
+  catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao excluir saída"})}
+});
 
 app.get("/api/controle/sales",(req,res)=>{
   res.set("Cache-Control","no-store");
