@@ -436,6 +436,12 @@ setTimeout(async()=>{
     }
     const recovered=await backfillAuthorizedAudioForDate(today);
     console.log("AUTHORIZED_AUDIO_RECOVERY",JSON.stringify({date:today,...recovered}));
+    const forced=await recoverSpecificAuthorizedAudioIds(today,[
+      "AC4741B300DB70B2764A5CE1075AFC88",
+      "AC3AA902AE86E1677A39DB02126F1390",
+      "ACE5BAEA5CA48DF3A93C2834AC160B86"
+    ]);
+    console.log("AUTHORIZED_AUDIO_FORCE_RECOVERY",JSON.stringify({date:today,...forced}));
   }catch(e){console.error("Falha ao preparar histórico autorizado do dia:",e?.message||e)}
 },5000);
 
@@ -1048,6 +1054,49 @@ async function processAuthorizedHistoricalAudio({token,messageId,timestamp,perso
   }catch(e){console.error("Falha ao relançar transcrição histórica:",e?.message||e)}
   return {ok:true,transcricao,interpretacao:result?.interpretacao||null};
 }
+async function recoverSpecificAuthorizedAudioIds(targetDate, ids=[]) {
+  const wanted=new Set((Array.isArray(ids)?ids:[]).map(v=>String(v||"").trim()).filter(Boolean));
+  if(!wanted.size) return {processed:0,failed:0,total:0};
+  const business=await findExistingBusinessUser();
+  const token=String(business?.token || business?.Token || "").trim();
+  if(!token) return {processed:0,failed:0,total:0};
+  const people=[
+    {nome:"Cláudio",jids:String(SEED_CLIENT_PHONE||"").replace(/\D/g,"")?[String(SEED_CLIENT_PHONE||"").replace(/\D/g,"")+"@s.whatsapp.net"]:[]},
+    {nome:"Tafarel",jids:helperJidsByName("Tafarel")},
+    {nome:"Maíra",jids:helperJidsByName("Maíra")}
+  ];
+  const jobs=[],seen=new Set();
+  for(const p of people){
+    for(const jid of p.jids){
+      try{
+        const h=await wuz("/chat/history?chat_jid="+encodeURIComponent(jid)+"&limit=1000",{headers:userHeaders(token)});
+        const arr=Array.isArray(h?.data)?h.data:Array.isArray(h)?h:[];
+        for(const m of arr){
+          const id=String(m?.message_id||"").trim();
+          if(!id||!wanted.has(id)||seen.has(id)||localDate(m?.timestamp)!==targetDate) continue;
+          const raw=rawHistoryObject(m);
+          const audio=audioMessageFromObject(raw);
+          if(!audio) continue;
+          seen.add(id);
+          jobs.push({token,messageId:id,timestamp:m?.timestamp,person:p.nome,senderJid:m?.sender_jid||"",senderAlt:m?.sender_alt||"",chatJid:m?.chat_jid||jid,audio});
+        }
+      }catch(e){
+        console.error("Falha ao preparar áudio específico autorizado:",e?.message||e);
+      }
+    }
+  }
+  let processed=0,failed=0;
+  for(const job of jobs){
+    const done=await processAuthorizedHistoricalAudio(job).catch(e=>{
+      console.error("Falha ao recuperar áudio específico autorizado:",job?.messageId||"",e?.message||e);
+      return null;
+    });
+    if(done) processed++; else failed++;
+    await new Promise(r=>setTimeout(r,250));
+  }
+  return {processed,failed,total:jobs.length};
+}
+
 async function backfillAuthorizedAudioForDate(targetDate, suppliedToken="") {
   const business=suppliedToken?null:await findExistingBusinessUser();
   const token=String(suppliedToken || business?.token || business?.Token || "").trim();
