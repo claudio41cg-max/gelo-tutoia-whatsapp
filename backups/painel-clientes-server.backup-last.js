@@ -647,6 +647,31 @@ function seedControlLedger(){
   }
 
   insertControlExpense({spent_at:"2026-10-03T18:01:00-03:00",description:"GNV",amount:20,source:"manual-photo-import"},"expense-2026-10-03-gnv");
+
+  const seed0410=[
+    ["manual-2026-10-04-marcelo","2026-10-04T12:00:00-03:00","Marcelo",2,"filt","Dinheiro",13],
+    ["manual-2026-10-04-padaria-bmg","2026-10-04T12:01:00-03:00","Padaria BMG",2,"esc","Dinheiro",8],
+    ["manual-2026-10-04-alex-perninha","2026-10-04T12:02:00-03:00","Alex Perninha",2,"esc","PIX",7],
+    ["manual-2026-10-04-para","2026-10-04T12:03:00-03:00","Pará",5,"esc","PIX",6],
+    ["manual-2026-10-04-tiago","2026-10-04T12:04:00-03:00","Tiago",2,"esc","PIX",6],
+    ["manual-2026-10-04-marcelo-cosmos","2026-10-04T12:05:00-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-04-seu-luiz","2026-10-04T12:06:00-03:00","Seu Luiz",1,"esc","Dinheiro",7],
+    ["manual-2026-10-04-lilian","2026-10-04T12:07:00-03:00","Lilian",2,"esc","Dinheiro",7],
+    ["manual-2026-10-04-churrasco-lilian","2026-10-04T12:08:00-03:00","Churrasco Lilian",2,"esc","Dinheiro",7],
+    ["manual-2026-10-04-churrasco-tia","2026-10-04T12:09:00-03:00","Churrasco Tia",2,"esc","Dinheiro",7],
+    ["manual-2026-10-04-filomena","2026-10-04T12:10:00-03:00","Filomena",7,"esc","Dinheiro",7],
+    ["manual-2026-10-04-barraca-clinica","2026-10-04T12:11:00-03:00","Barraca Caldo Clínica da Família",1,"esc","PIX",7],
+    ["manual-2026-10-04-seu-gilson","2026-10-04T12:12:00-03:00","Seu Gilson",2,"filt","PIX",13],
+    ["manual-2026-10-04-ivan","2026-10-04T12:13:00-03:00","Ivan",6,"esc","Dinheiro",7],
+    ["manual-2026-10-04-jonny","2026-10-04T12:14:00-03:00","Jonny",60,"esc","PIX",7]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0410){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-user-import"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-04T18:00:00-03:00",description:"Ajudantes",amount:200,source:"manual-user-import"},"expense-2026-10-04-ajudantes");
+  insertControlExpense({spent_at:"2026-10-04T18:01:00-03:00",description:"GNV",amount:30,source:"manual-user-import"},"expense-2026-10-04-gnv");
+  insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
+  insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
   console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
 }
 
