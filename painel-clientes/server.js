@@ -619,6 +619,8 @@ function seedControlLedger(){
   }
   insertControlExpense({spent_at:"2026-10-02T18:00:00-03:00",description:"Ajudantes",amount:120,source:"manual-photo-import"},"expense-2026-10-02-ajudantes");
   insertControlExpense({spent_at:"2026-10-02T18:01:00-03:00",description:"GNV",amount:20,source:"manual-photo-import"},"expense-2026-10-02-gnv");
+  insertControlExpense({spent_at:"2026-10-03T18:00:00-03:00",description:"Ajudante",amount:120,source:"manual-photo-import"},"expense-2026-10-03-ajudante");
+  insertControlExpense({spent_at:"2026-10-03T18:01:00-03:00",description:"GNV",amount:20,source:"manual-photo-import"},"expense-2026-10-03-gnv");
   console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
 }
 
