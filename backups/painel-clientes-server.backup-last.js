@@ -687,7 +687,7 @@ function seedControlLedger(){
     ["manual-2026-10-07-tiago","2026-10-07T09:42:59-03:00","Tiago",3,"esc","PIX",6],
     ["manual-2026-10-07-alex-campinho","2026-10-07T09:43:12-03:00","Alex Campinho",1,"esc","PIX",7],
     ["manual-2026-10-07-barraca-sacolao","2026-10-07T09:44:12-03:00","Barraca Caldo de Cana Inhoaíba/Sacolão",1,"filt","Dinheiro",13],
-    ["manual-2026-10-07-marcio","2026-10-07T09:44:23-03:00","Márcio",4,"esc","PIX",7],
+    ["manual-2026-10-07-marcio","2026-10-07T09:44:23-03:00","Márcio",4,"esc","Dinheiro",7],
     ["manual-2026-10-07-caldo-clinica-filt","2026-10-07T10:00:00-03:00","Caldo do posto/clínica/esquerdo",1,"filt","PIX",13],
     ["manual-2026-10-07-caldo-clinica-esc","2026-10-07T10:00:01-03:00","Caldo do posto/clínica/esquerdo",1,"esc","PIX",7],
     ["manual-2026-10-07-marcelo-cosmos","2026-10-07T10:36:35-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
@@ -701,6 +701,10 @@ function seedControlLedger(){
   for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0710){
     insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
   }
+  insertControlExpense({spent_at:"2026-10-07T18:00:00-03:00",description:"GNV",amount:20,source:"manual-confirmed-report"},"expense-2026-10-07-gnv");
+  insertControlExpense({spent_at:"2026-10-07T18:01:00-03:00",description:"Ajudante",amount:56,source:"manual-confirmed-report"},"expense-2026-10-07-ajudante");
+  insertControlExpense({spent_at:"2026-10-07T18:02:00-03:00",description:"Camarão",amount:30,source:"manual-confirmed-report"},"expense-2026-10-07-camarao");
+  insertControlExpense({spent_at:"2026-10-07T18:03:00-03:00",description:"Frutas",amount:20,source:"manual-confirmed-report"},"expense-2026-10-07-frutas");
   console.log("CONTROL_LEDGER_READY",JSON.stringify({sales:listControlSales().length,expenses:listControlExpenses().length}));
 }
 
