@@ -679,6 +679,26 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed0110=[
+    ["manual-2026-10-01-marcelo","2026-10-01T09:00:00-03:00","Marcelo",1,"filt","Dinheiro",13],
+    ["manual-2026-10-01-perninha","2026-10-01T09:01:00-03:00","Alex Perninha",3,"esc","Dinheiro",7],
+    ["manual-2026-10-01-para","2026-10-01T09:02:00-03:00","Pará",10,"esc","PIX",6],
+    ["manual-2026-10-01-tiago","2026-10-01T09:03:00-03:00","Tiago",4,"esc","PIX",6],
+    ["manual-2026-10-01-ivan","2026-10-01T09:04:00-03:00","Ivan",3,"esc","Dinheiro",7],
+    ["manual-2026-10-01-marcio","2026-10-01T09:05:00-03:00","Márcio",3,"esc","Dinheiro",7],
+    ["manual-2026-10-01-caldo-posto-filt","2026-10-01T09:06:00-03:00","Caldo de Cana Posto",1,"filt","Dinheiro",13],
+    ["manual-2026-10-01-caldo-posto-esc","2026-10-01T09:06:01-03:00","Caldo de Cana Posto",1,"esc","Dinheiro",7],
+    ["manual-2026-10-01-caldo-praca","2026-10-01T09:07:00-03:00","Caldo de Cana da Praça",1,"filt","Dinheiro",13],
+    ["manual-2026-10-01-marcelo-cosmos","2026-10-01T09:08:00-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-01-seu-luiz","2026-10-01T09:09:00-03:00","Seu Luiz",2,"esc","Dinheiro",8],
+    ["manual-2026-10-01-padaria-paciencia","2026-10-01T09:10:00-03:00","Padaria Paciência",8,"esc","PIX",7]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0110){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-01T18:00:00-03:00",description:"Ajudante",amount:56,source:"manual-confirmed-report"},"expense-2026-10-01-ajudante");
+  insertControlExpense({spent_at:"2026-10-01T18:01:00-03:00",description:"GNV",amount:20,source:"manual-confirmed-report"},"expense-2026-10-01-gnv");
+
   const seed0510=[
     ["manual-2026-10-05-padaria-bmg","2026-10-05T09:30:00-03:00","Padaria BMG",2,"esc","Dinheiro",8],
     ["manual-2026-10-05-para","2026-10-05T09:31:00-03:00","Pará",8,"esc","PIX",6],
