@@ -692,7 +692,8 @@ function seedControlLedger(){
     ["manual-2026-10-08-caldo-praca","2026-10-08T09:48:00-03:00","Caldo da Praça",1,"filt","Dinheiro",13],
     ["manual-2026-10-08-marcio","2026-10-08T09:49:00-03:00","Márcio",3,"esc","Dinheiro",7],
     ["manual-2026-10-08-seu-luiz","2026-10-08T09:50:00-03:00","Seu Luiz",2,"esc","Dinheiro",8],
-    ["manual-2026-10-08-padaria-paciencia","2026-10-08T09:51:00-03:00","Padaria Paciência",6,"esc","PIX",7]
+    ["manual-2026-10-08-padaria-paciencia","2026-10-08T09:51:00-03:00","Padaria Paciência",6,"esc","PIX",7],
+    ["manual-2026-10-08-peixaria-lilian","2026-10-08T09:52:00-03:00","Peixaria Lilian",3,"esc","PIX",7]
   ];
   for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0810){
     insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
