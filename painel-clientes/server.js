@@ -679,6 +679,13 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed0810=[
+    ["manual-2026-10-08-marcelo","2026-10-08T09:41:00-03:00","Marcelo",2,"filt","PIX",13]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0810){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
+
   const seed0110=[
     ["manual-2026-10-01-marcelo","2026-10-01T09:00:00-03:00","Marcelo",1,"filt","Dinheiro",13],
     ["manual-2026-10-01-perninha","2026-10-01T09:01:00-03:00","Alex Perninha",3,"esc","Dinheiro",7],
