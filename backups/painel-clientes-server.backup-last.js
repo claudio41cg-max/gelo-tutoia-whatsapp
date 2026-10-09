@@ -700,6 +700,8 @@ function seedControlLedger(){
     insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
   }
 
+  insertControlExpense({spent_at:"2026-10-08T12:11:00-03:00",description:"Ajudante",amount:65,source:"manual-confirmed-report"},"expense-2026-10-08-ajudante");
+
   const seed0110=[
     ["manual-2026-10-01-marcelo","2026-10-01T09:00:00-03:00","Marcelo",1,"filt","Dinheiro",13],
     ["manual-2026-10-01-perninha","2026-10-01T09:01:00-03:00","Alex Perninha",3,"esc","Dinheiro",7],
