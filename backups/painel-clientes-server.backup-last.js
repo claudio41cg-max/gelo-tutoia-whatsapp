@@ -689,6 +689,35 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed0910=[
+    ["manual-2026-10-09-para","2026-10-09T09:25:22-03:00","Pará",8,"esc","PIX",6],
+    ["manual-2026-10-09-tiago","2026-10-09T09:25:23-03:00","Tiago",4,"esc","PIX",6],
+    ["manual-2026-10-09-caldo-rua22","2026-10-09T09:25:22-03:00","Caldo de Cana Rua 22",2,"esc","Dinheiro",7],
+    ["manual-2026-10-09-alex-rua22","2026-10-09T09:25:22-03:00","Alex Rua 22",2,"esc","PIX",7],
+    ["manual-2026-10-09-ivan","2026-10-09T09:25:23-03:00","Ivan",4,"esc","PIX",7],
+    ["manual-2026-10-09-padaria-rua22","2026-10-09T09:25:23-03:00","Padaria Rua 22",2,"esc","Dinheiro",7],
+    ["manual-2026-10-09-filomena-esc","2026-10-09T09:39:58-03:00","Filomena",10,"esc","PIX",7],
+    ["manual-2026-10-09-filomena-filt5","2026-10-09T09:39:59-03:00","Filomena",2,"filt","PIX",5],
+    ["manual-2026-10-09-marcio","2026-10-09T09:44:14-03:00","Márcio",2,"esc","Dinheiro",7],
+    ["manual-2026-10-09-the-best-filt","2026-10-09T09:44:41-03:00","The Best",1,"filt","Dinheiro",13],
+    ["manual-2026-10-09-the-best-esc","2026-10-09T09:44:42-03:00","The Best",1,"esc","Dinheiro",7],
+    ["manual-2026-10-09-caldo-praca","2026-10-09T09:44:50-03:00","Caldo da Praça",1,"filt","Dinheiro",13],
+    ["manual-2026-10-09-caldo-marcelo","2026-10-09T09:52:00-03:00","Caldo de Cana do Marcelo",2,"filt","Dinheiro",13],
+    ["manual-2026-10-09-laranja","2026-10-09T09:55:32-03:00","Laranja",10,"esc","Dinheiro",7],
+    ["manual-2026-10-09-marcelo-cosmos","2026-10-09T09:56:51-03:00","Marcelo Cosmos",2,"filt","Dinheiro",13],
+    ["manual-2026-10-09-seu-luiz","2026-10-09T10:01:15-03:00","Seu Luiz",2,"esc","PIX",8],
+    ["manual-2026-10-09-padaria-paciencia","2026-10-09T10:09:27-03:00","Padaria Paciência",10,"esc","PIX",7],
+    ["manual-2026-10-09-lilian","2026-10-09T11:12:48-03:00","Lilian",3,"esc","PIX",7],
+    ["manual-2026-10-09-alex-campinho","2026-10-09T11:13:18-03:00","Alex Campinho",1,"esc","PIX",7],
+    ["manual-2026-10-09-marcao","2026-10-09T11:13:35-03:00","Marcão",30,"esc","PIX",7],
+    ["manual-2026-10-09-seu-pedro","2026-10-09T12:56:00-03:00","Seu Pedro",4,"esc","Dinheiro",7]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed0910){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-09T12:56:10-03:00",description:"Ajudantes",amount:70,source:"manual-confirmed-report"},"expense-2026-10-09-ajudantes");
+  insertControlExpense({spent_at:"2026-10-09T12:56:20-03:00",description:"GNV",amount:20,source:"manual-confirmed-report"},"expense-2026-10-09-gnv");
+
   const seed0810=[
     ["manual-2026-10-08-marcelo","2026-10-08T09:41:00-03:00","Marcelo",2,"filt","PIX",13],
     ["manual-2026-10-08-ivan","2026-10-08T09:42:00-03:00","Ivan",6,"esc","Dinheiro",7],
