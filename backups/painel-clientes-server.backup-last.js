@@ -689,6 +689,13 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  insertControlSale({sold_at:"2026-10-10T08:43:40-03:00",client:"Chatuba",qty:2,product_type:"esc",payment:"Dinheiro",unit_price:8,source:"manual-confirmed-report"},"manual-2026-10-10-chatuba");
+  insertControlExpense({spent_at:"2026-10-10T16:57:10-03:00",description:"Tafarel",amount:60,source:"manual-confirmed-report"},"expense-2026-10-10-tafarel");
+  insertControlExpense({spent_at:"2026-10-10T16:57:20-03:00",description:"Maíra",amount:60,source:"manual-confirmed-report"},"expense-2026-10-10-maira");
+  insertControlExpense({spent_at:"2026-10-10T16:57:30-03:00",description:"GNV",amount:30,source:"manual-confirmed-report"},"expense-2026-10-10-gnv");
+  insertControlExpense({spent_at:"2026-10-10T16:57:40-03:00",description:"Lanche",amount:6,source:"manual-confirmed-report"},"expense-2026-10-10-lanche");
+  insertControlExpense({spent_at:"2026-10-10T16:57:50-03:00",description:"Guaraná",amount:12,source:"manual-confirmed-report"},"expense-2026-10-10-guarana");
+
   const seed0910=[
     ["manual-2026-10-09-para","2026-10-09T09:25:22-03:00","Pará",8,"esc","PIX",6],
     ["manual-2026-10-09-tiago","2026-10-09T09:25:23-03:00","Tiago",4,"esc","PIX",6],
