@@ -547,7 +547,7 @@ function insertControlSale(input={},forcedId=""){
   const client=String(input.client||input.cliente||"").trim();
   const type=String(input.product_type||input.tipo||"").trim()==="filt"?"filt":"esc";
   const qty=Math.max(1,Number(input.qty||input.qtd||0)||0);
-  const payment=["Dinheiro","PIX","Fiado"].includes(String(input.payment||input.pagamento||""))?String(input.payment||input.pagamento):"Dinheiro";
+  const payment=["Dinheiro","PIX","Fiado","Não informado"].includes(String(input.payment||input.pagamento||""))?String(input.payment||input.pagamento):"Dinheiro";
   if(!client||!qty)throw new Error("Cliente e quantidade são obrigatórios");
   let soldMs,soldAt;
   if(input.sold_at){
@@ -688,6 +688,38 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:01:00-03:00",description:"GNV",amount:30,source:"manual-user-import"},"expense-2026-10-04-gnv");
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
+
+  const seed1110=[
+    ["manual-2026-10-11-marcelo","2026-10-11T09:00:00-03:00","Marcelo",2,"filt","Dinheiro",13],
+    ["manual-2026-10-11-ivan-din","2026-10-11T09:01:00-03:00","Ivan",2,"esc","Dinheiro",7],
+    ["manual-2026-10-11-ivan-pix","2026-10-11T09:01:01-03:00","Ivan",4,"esc","PIX",7],
+    ["manual-2026-10-11-padaria-bmg","2026-10-11T09:02:00-03:00","Padaria BMG",1,"esc","Dinheiro",8],
+    ["manual-2026-10-11-alex-rua22","2026-10-11T09:03:00-03:00","Alex Rua 22",5,"esc","Dinheiro",7],
+    ["manual-2026-10-11-maria-helieide","2026-10-11T09:04:00-03:00","Maria Hélieide",7,"esc","Dinheiro",7],
+    ["manual-2026-10-11-marcelo-cosmos","2026-10-11T09:05:00-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-11-churrasco-cosmos","2026-10-11T09:06:00-03:00","Churrasco Cosmos",2,"esc","Dinheiro",10],
+    ["manual-2026-10-11-jonny-feira","2026-10-11T09:07:00-03:00","Jonny Feira",10,"esc","PIX",7],
+    ["manual-2026-10-11-luiz-peixaria","2026-10-11T09:08:00-03:00","Luiz Peixaria",2,"esc","Dinheiro",8],
+    ["manual-2026-10-11-salao-piscina","2026-10-11T09:09:00-03:00","Salão Piscina",5,"esc","PIX",7],
+    ["manual-2026-10-11-churrasco-tia-pix","2026-10-11T09:10:00-03:00","Churrasco Tia",1,"esc","PIX",7],
+    ["manual-2026-10-11-churrasco-tia-din","2026-10-11T09:10:01-03:00","Churrasco Tia",2,"esc","Dinheiro",7],
+    ["manual-2026-10-11-lilian","2026-10-11T09:11:00-03:00","Lilian",2,"esc","Dinheiro",7],
+    ["manual-2026-10-11-churrasco-lilian","2026-10-11T09:12:00-03:00","Churrasco Lilian",2,"esc","Dinheiro",7],
+    ["manual-2026-10-11-sr-gilson-pix","2026-10-11T09:13:00-03:00","Sr. Gilson",2,"filt","PIX",13],
+    ["manual-2026-10-11-sr-gilson-ni","2026-10-11T09:13:01-03:00","Sr. Gilson",2,"filt","Não informado",13],
+    ["manual-2026-10-11-cliente-rua-a","2026-10-11T09:14:00-03:00","Cliente Rua",7,"esc","PIX",10],
+    ["manual-2026-10-11-cliente-rua-b","2026-10-11T09:14:01-03:00","Cliente Rua",7,"esc","PIX",10],
+    ["manual-2026-10-11-seu-pedro-filt","2026-10-11T09:15:00-03:00","Seu Pedro",2,"filt","Dinheiro",10],
+    ["manual-2026-10-11-seu-pedro-filt5","2026-10-11T09:15:01-03:00","Seu Pedro",2,"filt","Dinheiro",5],
+    ["manual-2026-10-11-para-pix","2026-10-11T09:16:00-03:00","Peixaria Pará",1,"esc","PIX",6],
+    ["manual-2026-10-11-para-ni","2026-10-11T09:16:01-03:00","Peixaria Pará",1,"esc","Não informado",6]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed1110){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-caderno-import"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-11T17:39:00-03:00",description:"Maíra",amount:100,source:"manual-caderno-import"},"expense-2026-10-11-maira");
+  insertControlExpense({spent_at:"2026-10-11T17:39:10-03:00",description:"Tafarel",amount:100,source:"manual-caderno-import"},"expense-2026-10-11-tafarel");
+  insertControlExpense({spent_at:"2026-10-11T17:39:20-03:00",description:"Álcool",amount:50,source:"manual-caderno-import"},"expense-2026-10-11-alcool");
 
   const seed1010=[
     ["manual-2026-10-10-cliente-rua","AC67CF6D24C618CF6A8BD0B17B94453E","2026-10-10T10:01:12-03:00","Cliente Rua / Peixaria",1,"esc","PIX",7],
