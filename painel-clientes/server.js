@@ -689,6 +689,37 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed1010=[
+    ["manual-2026-10-10-cliente-rua","AC67CF6D24C618CF6A8BD0B17B94453E","2026-10-10T10:01:12-03:00","Cliente Rua / Peixaria",1,"esc","PIX",7],
+    ["manual-2026-10-10-marcelo-rua22","AC00EB05F2242B9356E3CEB426B3CC19","2026-10-10T10:01:20-03:00","Marcelo Rua 22",2,"filt","PIX",13],
+    ["manual-2026-10-10-padaria-rua22","AC96A7CFB08B0059B0FBFA7A4774830D","2026-10-10T10:01:26-03:00","Padaria Rua 22",1,"esc","Dinheiro",7],
+    ["manual-2026-10-10-ivan-a","AC36FD4061D5531627D927D1C36544CE","2026-10-10T10:01:41-03:00","Ivan",6,"esc","Dinheiro",7],
+    ["manual-2026-10-10-para","AC3FE6CB97C305257D2C8D2FE1AF2BA9","2026-10-10T10:02:12-03:00","Pará",7,"esc","PIX",6],
+    ["manual-2026-10-10-tiago","ACA7847C88225BD0DFC7F17C6921113D","2026-10-10T10:01:57-03:00","Tiago",4,"esc","PIX",6],
+    ["manual-2026-10-10-caldo-praca","ACFE56C45E24513F6CDE4EC1E8CAD2B2","2026-10-10T10:02:24-03:00","Caldo da Praça",1,"filt","Dinheiro",13],
+    ["manual-2026-10-10-marcio","AC1EA9FBC2887B1DC7DD8FABCF894372","2026-10-10T10:02:31-03:00","Márcio",2,"esc","Dinheiro",7],
+    ["manual-2026-10-10-the-best-esc","AC7D451F717E83EC6A1EE926B4121CEE","2026-10-10T10:02:42-03:00","The Best",1,"esc","PIX",7],
+    ["manual-2026-10-10-the-best-filt","AC7D451F717E83EC6A1EE926B4121CEE","2026-10-10T10:02:43-03:00","The Best",1,"filt","PIX",13],
+    ["manual-2026-10-10-marcelo-cosmos","ACBDC00C3A64BF17A9F24E4CB484E0CB","2026-10-10T10:02:52-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-10-frango-cosmos","AC91B0477A0F8B940806C790668BE2F6","2026-10-10T10:03:05-03:00","Frango Cosmos",1,"esc","Fiado",7],
+    ["manual-2026-10-10-seu-luiz","AC33ABD663798821F099B0D45065E586","2026-10-10T10:03:15-03:00","Seu Luiz",1,"esc","Dinheiro",8],
+    ["manual-2026-10-10-padaria-paciencia","AC81C980831442CE6B236C1CFFF76504","2026-10-10T10:03:39-03:00","Padaria Paciência",13,"esc","PIX",7],
+    ["manual-2026-10-10-salao-piscina","ACADBCB757E722481F3C468508C2D63D","2026-10-10T10:18:27-03:00","Salão Piscina",5,"esc","PIX",7],
+    ["manual-2026-10-10-lilian","AC5BDEB8B1C1EC3620EBDDFC96FCD5F1","2026-10-10T10:50:44-03:00","Lilian",3,"esc","Dinheiro",7],
+    ["manual-2026-10-10-churrasco-ao-lado","AC3B3E46F06F61961341DAE1A6B8DFC3","2026-10-10T10:51:13-03:00","Churrasco ao lado",1,"esc","PIX",7],
+    ["manual-2026-10-10-churrasco-frente-tia","AC57FDCF4A74BFCFB3DF7522968A24CE","2026-10-10T11:16:47-03:00","Churrasco em frente da Tia",1,"esc","PIX",7],
+    ["manual-2026-10-10-tia","AC06787F662A2A9298D4DDBD39D3CA4F","2026-10-10T11:16:48-03:00","Tia",1,"filt","Dinheiro",10],
+    ["manual-2026-10-10-frango-mineiro","ACFFAF5A5E55C2978EB7EF327BF6A8D1","2026-10-10T11:16:55-03:00","Frango Mineiro",2,"esc","PIX",7],
+    ["manual-2026-10-10-custodio","ACC8B37630B7C4DDF69DC40FFF93DC28","2026-10-10T11:17:03-03:00","Custódio",1,"esc","PIX",7],
+    ["manual-2026-10-10-ivan-b","ACBA257E1BDB7203727F443DEBA7F991","2026-10-10T11:29:40-03:00","Ivan",10,"esc","PIX",7],
+    ["manual-2026-10-10-alex-baiano","AC674A24E3C9512A1D1BF7DDCB593868","2026-10-10T11:29:54-03:00","Alex Baiano",8,"esc","PIX",7],
+    ["manual-2026-10-10-quiosque-praca","AC21B63EBB3370FF1097684AC112C12E","2026-10-10T11:36:18-03:00","Quiosque Praça Rua 22",2,"esc","Dinheiro",7],
+    ["manual-2026-10-10-seu-pedro","AC03FB7C393DFDFD10EF06AA7041EBDA","2026-10-10T11:52:07-03:00","Seu Pedro",10,"esc","PIX",7]
+  ];
+  for(const [id,message_id,sold_at,client,qty,product_type,payment,unit_price] of seed1010){
+    insertControlSale({message_id,sold_at,client,qty,product_type,payment,unit_price,source:"history-recovered"},id);
+  }
+
   insertControlSale({sold_at:"2026-10-10T08:43:40-03:00",client:"Chatuba",qty:2,product_type:"esc",payment:"Dinheiro",unit_price:8,source:"manual-confirmed-report"},"manual-2026-10-10-chatuba");
   insertControlExpense({spent_at:"2026-10-10T16:57:10-03:00",description:"Tafarel",amount:60,source:"manual-confirmed-report"},"expense-2026-10-10-tafarel");
   insertControlExpense({spent_at:"2026-10-10T16:57:20-03:00",description:"Maíra",amount:60,source:"manual-confirmed-report"},"expense-2026-10-10-maira");
