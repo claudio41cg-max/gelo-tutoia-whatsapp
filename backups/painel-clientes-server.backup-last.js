@@ -689,6 +689,28 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed1210=[
+    ["manual-2026-10-12-marcelo-rua22","2026-10-12T09:00:00-03:00","Marcelo Rua 22",2,"filt","Dinheiro",13],
+    ["manual-2026-10-12-tiago","2026-10-12T09:01:00-03:00","Tiago",3,"esc","PIX",6],
+    ["manual-2026-10-12-ivan","2026-10-12T09:02:00-03:00","Ivan",3,"esc","PIX",7],
+    ["manual-2026-10-12-tia","2026-10-12T09:03:00-03:00","Tia",1,"filt","Dinheiro",13],
+    ["manual-2026-10-12-churrasco-tia","2026-10-12T09:04:00-03:00","Churrasco Tia",1,"esc","Dinheiro",7],
+    ["manual-2026-10-12-salao-piscina","2026-10-12T09:05:00-03:00","Salão Piscina",5,"esc","Dinheiro",7],
+    ["manual-2026-10-12-padaria-paciencia","2026-10-12T09:06:00-03:00","Padaria Paciência",10,"esc","PIX",7],
+    ["manual-2026-10-12-seu-luiz","2026-10-12T09:07:00-03:00","Seu Luiz",1,"esc","Dinheiro",8],
+    ["manual-2026-10-12-seu-pedro","2026-10-12T18:10:00-03:00","Seu Pedro",10,"esc","Dinheiro",7],
+    ["manual-2026-10-12-seu-gilson","2026-10-12T18:11:00-03:00","Seu Gilson",2,"filt","PIX",13],
+    ["manual-2026-10-12-cliente-rua","2026-10-12T18:12:00-03:00","Cliente Rua",1,"esc","Dinheiro",10],
+    ["manual-2026-10-12-marcelo-cosmos","2026-10-12T18:13:00-03:00","Marcelo Cosmos",2,"filt","Dinheiro",13]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed1210){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-12T18:14:00-03:00",description:"Tafarel",amount:70,source:"manual-confirmed-report"},"expense-2026-10-12-tafarel");
+  insertControlExpense({spent_at:"2026-10-12T18:14:10-03:00",description:"Maíra",amount:70,source:"manual-confirmed-report"},"expense-2026-10-12-maira");
+  insertControlExpense({spent_at:"2026-10-12T18:14:20-03:00",description:"GNV",amount:20,source:"manual-confirmed-report"},"expense-2026-10-12-gnv");
+  insertControlExpense({spent_at:"2026-10-12T18:14:30-03:00",description:"Coca-Cola",amount:10,source:"manual-confirmed-report"},"expense-2026-10-12-coca-cola");
+
   const seed1110=[
     ["manual-2026-10-11-marcelo","2026-10-11T09:00:00-03:00","Marcelo",2,"filt","Dinheiro",13],
     ["manual-2026-10-11-ivan-din","2026-10-11T09:01:00-03:00","Ivan",2,"esc","Dinheiro",7],
