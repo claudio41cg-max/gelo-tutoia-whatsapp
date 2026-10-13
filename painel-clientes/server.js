@@ -689,6 +689,30 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed1310=[
+    ["manual-2026-10-13-padaria-bmg","2026-10-13T08:00:00-03:00","Padaria BMG",1,"esc","Dinheiro",8],
+    ["manual-2026-10-13-perninha","2026-10-13T08:01:00-03:00","Alex Perninha",2,"esc","Dinheiro",7],
+    ["manual-2026-10-13-para","2026-10-13T08:02:00-03:00","Pará",8,"esc","PIX",6],
+    ["manual-2026-10-13-tiago","2026-10-13T08:03:00-03:00","Tiago",1,"esc","PIX",6],
+    ["manual-2026-10-13-caldo-praca","2026-10-13T08:04:00-03:00","Caldo da Praça",1,"filt","Dinheiro",13],
+    ["manual-2026-10-13-the-best-filt","2026-10-13T08:05:00-03:00","The Best",1,"filt","PIX",13],
+    ["manual-2026-10-13-the-best-esc","2026-10-13T08:05:01-03:00","The Best",1,"esc","PIX",7],
+    ["manual-2026-10-13-marcelo-cosmos","2026-10-13T08:06:00-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-13-laranja","2026-10-13T08:07:00-03:00","Laranja",10,"esc","Dinheiro",7],
+    ["manual-2026-10-13-seu-luiz","2026-10-13T08:08:00-03:00","Seu Luiz",1,"esc","Dinheiro",8],
+    ["manual-2026-10-13-padaria-paciencia","2026-10-13T08:09:00-03:00","Padaria Paciência",7,"esc","PIX",7],
+    ["manual-2026-10-13-lilian","2026-10-13T08:10:00-03:00","Lilian",3,"esc","Dinheiro",7],
+    ["manual-2026-10-13-seu-gilson","2026-10-13T08:11:00-03:00","Seu Gilson",2,"filt","PIX",13],
+    ["manual-2026-10-13-tia","2026-10-13T08:12:00-03:00","Tia",1,"filt","Dinheiro",13],
+    ["manual-2026-10-13-marcelo","2026-10-13T08:13:00-03:00","Marcelo",1,"filt","Dinheiro",13]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed1310){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-13T12:50:00-03:00",description:"Ajudante Maíra",amount:56,source:"manual-confirmed-report"},"expense-2026-10-13-maira");
+  insertControlExpense({spent_at:"2026-10-13T12:50:10-03:00",description:"GNV",amount:29,source:"manual-confirmed-report"},"expense-2026-10-13-gnv");
+  insertControlExpense({spent_at:"2026-10-13T12:50:20-03:00",description:"Areia de gato",amount:10,source:"manual-confirmed-report"},"expense-2026-10-13-areia-gato");
+
   const seed1210=[
     ["manual-2026-10-12-marcelo-rua22","2026-10-12T09:00:00-03:00","Marcelo Rua 22",2,"filt","Dinheiro",13],
     ["manual-2026-10-12-tiago","2026-10-12T09:01:00-03:00","Tiago",3,"esc","PIX",6],
