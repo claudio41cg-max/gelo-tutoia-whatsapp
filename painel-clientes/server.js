@@ -689,6 +689,32 @@ function seedControlLedger(){
   insertControlExpense({spent_at:"2026-10-04T18:02:00-03:00",description:"Álcool",amount:20,source:"manual-user-import"},"expense-2026-10-04-alcool");
   insertControlExpense({spent_at:"2026-10-04T18:03:00-03:00",description:"Bar",amount:30,source:"manual-user-import"},"expense-2026-10-04-bar");
 
+  const seed1410=[
+    ["manual-2026-10-14-ivan","2026-10-14T08:00:00-03:00","Ivan",5,"esc","PIX",7],
+    ["manual-2026-10-14-marcelo","2026-10-14T08:01:00-03:00","Marcelo",2,"filt","Dinheiro",13],
+    ["manual-2026-10-14-alex-perninha","2026-10-14T08:02:00-03:00","Alex Perninha",2,"esc","PIX",7],
+    ["manual-2026-10-14-para","2026-10-14T08:03:00-03:00","Pará",6,"esc","PIX",6],
+    ["manual-2026-10-14-tiago","2026-10-14T08:04:00-03:00","Tiago",2,"esc","PIX",6],
+    ["manual-2026-10-14-marcio","2026-10-14T08:05:00-03:00","Márcio",3,"esc","Dinheiro",7],
+    ["manual-2026-10-14-caldo-praca","2026-10-14T08:06:00-03:00","Caldo da Praça",1,"filt","Dinheiro",13],
+    ["manual-2026-10-14-the-best-filt","2026-10-14T08:07:00-03:00","The Best",1,"filt","PIX",13],
+    ["manual-2026-10-14-the-best-esc","2026-10-14T08:07:01-03:00","The Best",1,"esc","PIX",7],
+    ["manual-2026-10-14-marcelo-cosmos","2026-10-14T08:08:00-03:00","Marcelo Cosmos",1,"filt","Dinheiro",13],
+    ["manual-2026-10-14-alex-laranja","2026-10-14T08:09:00-03:00","Alex Laranja",5,"esc","Dinheiro",7],
+    ["manual-2026-10-14-seu-luiz","2026-10-14T08:10:00-03:00","Seu Luiz",2,"esc","Dinheiro",8],
+    ["manual-2026-10-14-padaria-paciencia","2026-10-14T08:11:00-03:00","Padaria Paciência",7,"esc","PIX",7],
+    ["manual-2026-10-14-lilian","2026-10-14T08:12:00-03:00","Lilian",3,"esc","Dinheiro",7],
+    ["manual-2026-10-14-seu-gilson","2026-10-14T08:13:00-03:00","Seu Gilson",1,"filt","PIX",13],
+    ["manual-2026-10-14-custodio","2026-10-14T08:14:00-03:00","Custódio",2,"esc","PIX",7],
+    ["manual-2026-10-14-marcao","2026-10-14T08:15:00-03:00","Marcão",30,"esc","PIX",7]
+  ];
+  for(const [id,sold_at,client,qty,product_type,payment,unit_price] of seed1410){
+    insertControlSale({sold_at,client,qty,product_type,payment,unit_price,source:"manual-confirmed-report"},id);
+  }
+  insertControlExpense({spent_at:"2026-10-14T14:40:00-03:00",description:"Tafarel",amount:70,source:"manual-confirmed-report"},"expense-2026-10-14-tafarel");
+  insertControlExpense({spent_at:"2026-10-14T14:40:10-03:00",description:"GNV",amount:20,source:"manual-confirmed-report"},"expense-2026-10-14-gnv");
+  insertControlExpense({spent_at:"2026-10-14T14:40:20-03:00",description:"Gás máquina",amount:80,source:"manual-confirmed-report"},"expense-2026-10-14-gas-maquina");
+
   const seed1310=[
     ["manual-2026-10-13-padaria-bmg","2026-10-13T08:00:00-03:00","Padaria BMG",1,"esc","Dinheiro",8],
     ["manual-2026-10-13-perninha","2026-10-13T08:01:00-03:00","Alex Perninha",2,"esc","Dinheiro",7],
