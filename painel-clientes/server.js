@@ -340,6 +340,17 @@ app.use("/api/control-bridge",(req,res,next)=>{
   res.set("Cache-Control","no-store");
   next();
 });
+// Exportação completa para migração: inclui registros excluídos para preservar o histórico.
+// Protegida pelo mesmo token de servidor usado pelo Gelo Tutóia Controle.
+app.get("/api/control-bridge/export",(req,res)=>{
+  try {
+    if(!salesDb)return res.status(503).json({ok:false,error:"Banco indisponível"});
+    const sales=salesDb.prepare("SELECT * FROM control_sales ORDER BY sold_ms ASC, id ASC").all();
+    const expenses=salesDb.prepare("SELECT * FROM control_expenses ORDER BY spent_ms ASC, id ASC").all();
+    return res.json({ok:true,exported_at:new Date().toISOString(),schema_version:1,
+      counts:{sales:sales.length,expenses:expenses.length},sales,expenses});
+  }catch(e){return res.status(500).json({ok:false,error:"Falha ao exportar dados"});}
+});
 app.get("/api/control-bridge/sales",(req,res)=>{
   try{return res.json({ok:true,sales:listControlSales()})}
   catch(e){return res.status(500).json({ok:false,error:e?.message||"Falha ao consultar vendas"})}
